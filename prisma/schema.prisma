@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  username           String           @unique
+  pinHash            String
+  role               Role
+  languagePreference Language
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  patientsCreated    Patient[]        @relation("UserCreatedPatients")
+  ancVisitsRecorded  ANCVisit[]       @relation("UserRecordedANC")
+  ultrasoundScans    UltrasoundScan[]
+  gbvcases           GBVCase[]
+  consultations      Consultation[]
+  syncLogs           SyncLog[]
+}
+
+enum Role {
+  HealthWorker
+  GBVCounselor
+  Supervisor
+  Admin
+}
+
+enum Language {
+  EN
+  SO
+}
+
+model Patient {
+  id              String               @id @default(uuid())
+  unfpId          String               @unique
+  photoUrl        String?
+  createdAt       DateTime             @default(now())
+  createdById     String
+  createdBy       User                 @relation("UserCreatedPatients", fields: [createdById], references: [id])
+  demographics    PatientDemographics?
+  ancVisits       ANCVisit[]
+  ultrasoundScans UltrasoundScan[]
+  gbvCases        GBVCase[]
+  consultations   Consultation[]
+}
+
+model PatientDemographics {
+  id           String  @id @default(uuid())
+  patientId    String  @unique
+  patient      Patient @relation(fields: [patientId], references: [id])
+  fullName     String
+  age          Int
+  locationGPS  String?
+  locationText String?
+}
+
+model ANCVisit {
+  id                String           @id @default(uuid())
+  patientId         String
+  patient           Patient          @relation(fields: [patientId], references: [id])
+  visitDate         DateTime
+  gestationalAge    Int
+  bpSystolic        Int
+  bpDiastolic       Int
+  weightKg          Float
+  riskScore         RiskScore
+  healthWorkerNotes String?
+  recordedById      String
+  recordedBy        User             @relation("UserRecordedANC", fields: [recordedById], references: [id])
+  ultrasoundScans   UltrasoundScan[]
+}
+
+enum RiskScore {
+  Low
+  Medium
+  High
+}
+
+model UltrasoundScan {
+  id            String    @id @default(uuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  ancVisitId    String?
+  ancVisit      ANCVisit? @relation(fields: [ancVisitId], references: [id])
+  imageFilePath String
+  scanDate      DateTime
+  annotations   String?
+  takenById     String
+  takenBy       User      @relation(fields: [takenById], references: [id])
+}
+
+model GBVCase {
+  id               String   @id @default(uuid())
+  patientId        String
+  patient          Patient  @relation(fields: [patientId], references: [id])
+  incidentType     String
+  dateOfIncident   DateTime
+  servicesProvided String
+  referralMade     Boolean
+  referralService  String?
+  recordedById     String
+  recordedBy       User     @relation(fields: [recordedById], references: [id])
+}
+
+model Consultation {
+  id               String             @id @default(uuid())
+  patientId        String
+  patient          Patient            @relation(fields: [patientId], references: [id])
+  requestingUserId String
+  // requestingUser   User               @relation(fields: [requestingUserId], references: [id])
+  specialistUserId String
+  specialistUser   User               @relation(fields: [specialistUserId], references: [id])
+  status           ConsultationStatus
+  chatLog          String?
+  consultationDate DateTime
+}
+
+enum ConsultationStatus {
+  Requested
+  InProgress
+  Completed
+}
+
+model SyncLog {
+  id            String     @id @default(uuid())
+  deviceId      String
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+  syncTimestamp DateTime   @default(now())
+  recordsPushed Int
+  recordsPulled Int
+  status        SyncStatus
+}
+
+enum SyncStatus {
+  Success
+  Failed
+  Partial
+}
