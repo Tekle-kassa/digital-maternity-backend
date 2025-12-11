@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const anc_controller_1 = require("./anc.controller");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const router = (0, express_1.Router)();
+router.post("/", authMiddleware_1.authenticate, (0, authMiddleware_1.authorizeRoles)(client_1.Role.HealthWorker, client_1.Role.Supervisor, client_1.Role.Admin), anc_controller_1.ANCController.createANCVisit);
+router.get("/", authMiddleware_1.authenticate, anc_controller_1.ANCController.getAllVisits);
+router.get("/:patientId", authMiddleware_1.authenticate, anc_controller_1.ANCController.getVisitsByPatient);
+router.put("/:visitId", authMiddleware_1.authenticate, anc_controller_1.ANCController.updateANCVisit);
+exports.default = router;

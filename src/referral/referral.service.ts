@@ -6,7 +6,7 @@ import {
   UpdateReferralDTO,
 } from "./referral.repository";
 import { decryptField, encryptField } from "../utils/encryption";
-import { ReferralStatus } from "../../generated/prisma/enums";
+import { ReferralStatus } from "../generated/prisma/enums";
 
 export class ReferralService {
   static async createReferral(dto: CreateReferralDTO) {

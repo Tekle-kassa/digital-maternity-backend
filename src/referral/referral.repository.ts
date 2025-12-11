@@ -1,4 +1,4 @@
-import { ReferralStatus } from "../../generated/prisma/enums";
+import { ReferralStatus } from "../generated/prisma/enums";
 import prisma from "../config/prisma";
 
 export interface CreateReferralDTO {

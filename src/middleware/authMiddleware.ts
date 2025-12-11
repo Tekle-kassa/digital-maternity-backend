@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import config from "../config";
-import { Role } from "../../generated/prisma/client";
+
 // import { Role } from "../../generated/prisma/enums";
 
 const JWT_SECRET = process.env.JWT_ACCESS_SECRET || "supersecretkey";
