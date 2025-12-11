@@ -1,9 +1,10 @@
 import { z } from "zod";
 
 export const ultrasoundSchema = z.object({
-  patientId: z.string().uuid(),
-  ancVisitId: z.string().uuid().optional(),
-  imageFilePath: z.string().nonempty(),
-  scanDate: z.string().nonempty(), // parse as date in controller
+  patientId: z.string(),
+  visitId: z.string().optional(),
+  imageUrl: z.string().nonempty(),
   annotations: z.string().optional(),
+  description: z.string().optional(),
+  gestationalAge: z.number().optional(),
 });

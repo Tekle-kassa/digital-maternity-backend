@@ -9,33 +9,101 @@ generator client {
   output   = "../generated/prisma"
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "erd.svg"  // or erd.png, erd.jpeg, erd.pdf
+}
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url = env("DATABASE_URL")
 }
 
 model User {
-  id                 String           @id @default(uuid())
-  username           String           @unique
-  pinHash            String
-  role               Role
-  languagePreference Language
-  isActive           Boolean          @default(true)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  patientsCreated    Patient[]        @relation("UserCreatedPatients")
-  ancVisitsRecorded  ANCVisit[]       @relation("UserRecordedANC")
-  ultrasoundScans    UltrasoundScan[]
-  gbvcases           GBVCase[]
-  consultations      Consultation[]
-  syncLogs           SyncLog[]
+  id              String         @id @default(uuid())
+  passwordHash    String
+  phone           String         @unique
+  fullName        String?
+  roles           UserRole[]
+  isActive        Boolean        @default(true)
+  mustChangePassword Boolean       @default(true)  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  patientsCreated Patient[]      @relation("UserCreatedPatients")
+  visitsRecorded  Visit[]        @relation("UserRecordedANC")
+  ultrasoundScans Ultrasound[]
+  // gbvcases          GBVCase[]
+  // consultations     Consultation[]
+  syncLogs        SyncLog[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  gbvreports      GBVReport[]
+  referralsCreated Referral[]
 }
 
-enum Role {
-  HealthWorker
-  GBVCounselor
-  Supervisor
-  Admin
+model Role {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  createdAt   DateTime   @default(now())
+  // permissions RolePermission[]
+  userRoles   UserRole[]
+}
+
+// enum Role {
+//   HealthWorker
+//   GBVCounselor
+//   Supervisor
+//   Admin
+// }
+// model Permission {
+//   id          String           @id @default(uuid())
+//   name        String           @unique
+//   description String?
+//   createdAt   DateTime         @default(now())
+//   rolePerms   RolePermission[]
+// }
+
+// model RolePermission {
+//   id           String     @id @default(uuid())
+//   role         Role       @relation(fields: [roleId], references: [id])
+//   roleId       String
+//   permission   Permission @relation(fields: [permissionId], references: [id])
+//   permissionId String
+//   createdAt    DateTime   @default(now())
+
+//   @@unique([roleId, permissionId])
+// }
+
+model UserRole {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  role      Role     @relation(fields: [roleId], references: [id])
+  roleId    String
+  grantedBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  action    String
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
 }
 
 enum Language {
@@ -44,43 +112,64 @@ enum Language {
 }
 
 model Patient {
-  id              String               @id @default(uuid())
-  unfpId          String               @unique
-  photoUrl        String?
-  createdAt       DateTime             @default(now())
-  createdById     String
-  createdBy       User                 @relation("UserCreatedPatients", fields: [createdById], references: [id])
-  demographics    PatientDemographics?
-  ancVisits       ANCVisit[]
-  ultrasoundScans UltrasoundScan[]
-  gbvCases        GBVCase[]
-  consultations   Consultation[]
+  id               String    @id @default(uuid())
+  fullName         String
+  unfpId           String    @unique
+  phone            String?
+  dob              DateTime?
+  address          String?
+  emergencyContact String?
+  // photoUrl        String?
+  createdAt        DateTime  @default(now())
+  createdById      String
+  createdBy        User      @relation("UserCreatedPatients", fields: [createdById], references: [id])
+  // demographics    PatientDemographics?
+
+  visits      Visit[]
+  // ultrasoundScans Ultrasound[]
+  // gbvCases        GBVCase[]
+  // consultations   Consultation[]
+  gbvreports  GBVReport[]
+  ultrasounds Ultrasound[]
+  referrals   Referral[] 
+  pregnancies Pregnancy[]
 }
 
-model PatientDemographics {
-  id           String  @id @default(uuid())
-  patientId    String  @unique
-  patient      Patient @relation(fields: [patientId], references: [id])
-  fullName     String
-  age          Int
-  locationGPS  String?
-  locationText String?
-}
+// model PatientDemographics {
+//   id           String  @id @default(uuid())
+//   patientId    String  @unique
+//   patient      Patient @relation(fields: [patientId], references: [id])
+//   fullName     String
+//   age          Int
+//   locationGPS  String?
+//   locationText String?
+// }
 
-model ANCVisit {
-  id                String           @id @default(uuid())
-  patientId         String
-  patient           Patient          @relation(fields: [patientId], references: [id])
-  visitDate         DateTime
-  gestationalAge    Int
-  bpSystolic        Int
-  bpDiastolic       Int
-  weightKg          Float
-  riskScore         RiskScore
-  healthWorkerNotes String?
-  recordedById      String
-  recordedBy        User             @relation("UserRecordedANC", fields: [recordedById], references: [id])
-  ultrasoundScans   UltrasoundScan[]
+model Visit {
+  id           String @id @default(uuid())
+  patientId    String
+  pregnancyId   String?
+  recordedById String
+
+  visitDate       DateTime
+  visitNumber   Int  ?
+  visitType     String ?
+  gestationalAge  Int? //remove
+  bloodPressure   String?
+  temperature     Float?
+  // bpSystolic        Int
+  // bpDiastolic       Int
+  weight          Float?
+  symptoms        String?
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  // riskScore         RiskScore
+  pregnancy       Pregnancy?    @relation(fields: [pregnancyId], references: [id])
+  
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  recordedBy      User         @relation("UserRecordedANC", fields: [recordedById], references: [id])
+  ultrasoundScans Ultrasound[]
 }
 
 enum RiskScore {
@@ -89,44 +178,52 @@ enum RiskScore {
   High
 }
 
-model UltrasoundScan {
-  id            String    @id @default(uuid())
-  patientId     String
-  patient       Patient   @relation(fields: [patientId], references: [id])
-  ancVisitId    String?
-  ancVisit      ANCVisit? @relation(fields: [ancVisitId], references: [id])
-  imageFilePath String
-  scanDate      DateTime
-  annotations   String?
-  takenById     String
-  takenBy       User      @relation(fields: [takenById], references: [id])
+model Ultrasound {
+  id             String   @id @default(uuid())
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id])
+  visitId        String?
+  visit          Visit?   @relation(fields: [visitId], references: [id])
+  imageUrl       String
+  description    String?
+  gestationalAge Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  // scanDate      DateTime
+  annotations    String?
+  takenById      String
+  takenBy        User     @relation(fields: [takenById], references: [id])
 }
 
-model GBVCase {
-  id               String   @id @default(uuid())
-  patientId        String
-  patient          Patient  @relation(fields: [patientId], references: [id])
-  incidentType     String
-  dateOfIncident   DateTime
-  servicesProvided String
-  referralMade     Boolean
-  referralService  String?
-  recordedById     String
-  recordedBy       User     @relation(fields: [recordedById], references: [id])
+model GBVReport {
+  id                          String    @id @default(uuid())
+  patientId                   String
+  patient                     Patient   @relation(fields: [patientId], references: [id])
+  incidentType                String?
+  incidentDate                DateTime?
+  allegedPerpetratorEncrypted String? // encrypted JSON/string
+  victimStatementEncrypted    String?
+  referralActionEncrypted     String?
+  attachmentUrl               String?
+  highRisk                    Boolean   @default(false)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  recordedById                String
+  recordedBy                  User      @relation(fields: [recordedById], references: [id])
 }
 
-model Consultation {
-  id               String             @id @default(uuid())
-  patientId        String
-  patient          Patient            @relation(fields: [patientId], references: [id])
-  requestingUserId String
-  // requestingUser   User               @relation(fields: [requestingUserId], references: [id])
-  specialistUserId String
-  specialistUser   User               @relation(fields: [specialistUserId], references: [id])
-  status           ConsultationStatus
-  chatLog          String?
-  consultationDate DateTime
-}
+// model Consultation {
+//   id               String             @id @default(uuid())
+//   patientId        String
+//   patient          Patient            @relation(fields: [patientId], references: [id])
+//   requestingUserId String
+//   // requestingUser   User               @relation(fields: [requestingUserId], references: [id])
+//   specialistUserId String
+//   specialistUser   User               @relation(fields: [specialistUserId], references: [id])
+//   status           ConsultationStatus
+//   chatLog          String?
+//   consultationDate DateTime
+// }
 
 enum ConsultationStatus {
   Requested
@@ -149,4 +246,40 @@ enum SyncStatus {
   Success
   Failed
   Partial
+}
+
+model Referral {
+  id            String   @id @default(uuid())
+  patientId     String
+  createdById   String
+  referredTo    String        // hospital or facility name
+  reason        String        // clinical reason for referral
+  notesEncrypted String?      // encrypted notes (sensitive)
+  attachmentUrl String?       // optional S3 document
+  status        ReferralStatus @default(INITIATED)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  patient      Patient @relation(fields: [patientId], references: [id])
+  createdBy    User    @relation(fields: [createdById], references: [id])
+}
+enum ReferralStatus {
+  INITIATED
+  SENT
+  RECEIVED
+  COMPLETED
+  CLOSED
+}
+
+model Pregnancy {
+  id           String   @id @default(uuid())
+  patientId    String
+  startDate    DateTime
+  estimatedDue DateTime?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  visits       Visit[]
+  patient      Patient  @relation(fields: [patientId], references: [id])
 }

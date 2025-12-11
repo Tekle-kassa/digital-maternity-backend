@@ -1,24 +1,35 @@
 import { Router } from "express";
 import { PatientController } from "./patient.controller";
 import { authenticate, authorizeRoles } from "../middleware/authMiddleware";
-import { Role } from "../../generated/prisma/enums";
+
+const ALLOWED = ["MIDWIFE", "DOCTOR"];
 
 const router = Router();
 
-router.get("/", authenticate, PatientController.getPatients);
-router.get("/:patientId", authenticate, PatientController.getPatientById);
+router.get(
+  "/",
+  authenticate,
+  authorizeRoles(...ALLOWED),
+  PatientController.list
+);
+router.get("/:id", authenticate, PatientController.getOne);
 
 router.post(
   "/",
   authenticate,
-  authorizeRoles(Role.Admin, Role.HealthWorker),
-  PatientController.createPatient
+  authorizeRoles(...ALLOWED),
+  PatientController.create
 );
 router.patch(
-  "/:patientId",
+  "/:id",
   authenticate,
-  authorizeRoles(Role.HealthWorker, Role.Admin),
-  PatientController.updatePatient
+  authorizeRoles(...ALLOWED),
+  PatientController.update
 );
-
+router.delete(
+  "/:id",
+  authenticate,
+  authorizeRoles(...ALLOWED),
+  PatientController.delete
+);
 export default router;

@@ -1,7 +1,6 @@
 import { Router } from "express";
-import { UltrasoundController } from "./ultrasound.controller";
+import { VisitController } from "./visit.controller";
 import { authenticate, authorizeRoles } from "../middleware/authMiddleware";
-import { ultrasoundUpload } from "../common/multerS3";
 
 const router = Router();
 
@@ -11,36 +10,35 @@ router.post(
   "/",
   authenticate,
   authorizeRoles(...CLINICAL_ROLES),
-  ultrasoundUpload.single("image"),
-  UltrasoundController.create
+  VisitController.create
+);
+
+router.get(
+  "/:id",
+  authenticate,
+  authorizeRoles(...CLINICAL_ROLES),
+  VisitController.getOne
 );
 
 router.get(
   "/patient/:patientId",
   authenticate,
   authorizeRoles(...CLINICAL_ROLES),
-  UltrasoundController.listByPatient
-);
-
-router.get(
-  "/:id",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  UltrasoundController.getOne
+  VisitController.listByPatient
 );
 
 router.patch(
   "/:id",
   authenticate,
   authorizeRoles(...CLINICAL_ROLES),
-  UltrasoundController.update
+  VisitController.update
 );
 
 router.delete(
   "/:id",
   authenticate,
   authorizeRoles(...CLINICAL_ROLES),
-  UltrasoundController.delete
+  VisitController.delete
 );
 
 export default router;
