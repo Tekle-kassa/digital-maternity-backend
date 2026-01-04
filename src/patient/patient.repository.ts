@@ -3,7 +3,8 @@ export interface CreatePatientDTO {
   //   unfpId: string;
   fullName: string;
   phone?: string;
-  dob?: Date;
+  // dob?: Date;
+  age?: number;
   address?: string;
   emergencyContact?: string;
   createdById: string;
@@ -15,6 +16,9 @@ export class PatientRepository {
   }
   static async findById(id: string) {
     return prisma.patient.findUnique({ where: { id } });
+  }
+  static async findByPhone(phone: string) {
+    return prisma.patient.findFirst({ where: { phone } });
   }
   static async findAll() {
     return prisma.patient.findMany({

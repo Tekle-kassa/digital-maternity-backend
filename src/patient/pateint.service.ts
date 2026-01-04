@@ -5,6 +5,11 @@ import { CreatePatientDTO, PatientRepository } from "./patient.repository";
 export class PatientService {
   static async createPatient(dto: CreatePatientDTO) {
     const unfpId = `UNFPA-${Date.now()}`;
+    if (dto.phone) {
+      const exists = await PatientRepository.findByPhone(dto.phone);
+      if (exists)
+        throw new AppError("Patient with this phone already exists", 400);
+    }
     return await PatientRepository.create(dto, unfpId);
   }
   static async listPatients() {

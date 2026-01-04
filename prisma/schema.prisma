@@ -11,33 +11,35 @@ generator client {
 
 generator erd {
   provider = "prisma-erd-generator"
-  output   = "erd.svg"  // or erd.png, erd.jpeg, erd.pdf
+  output   = "erd.svg" // or erd.png, erd.jpeg, erd.pdf
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id              String         @id @default(uuid())
-  passwordHash    String
-  phone           String         @unique
-  fullName        String?
-  roles           UserRole[]
-  isActive        Boolean        @default(true)
-  mustChangePassword Boolean       @default(true)  
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  patientsCreated Patient[]      @relation("UserCreatedPatients")
-  visitsRecorded  Visit[]        @relation("UserRecordedANC")
-  ultrasoundScans Ultrasound[]
+  id                 String             @id @default(uuid())
+  passwordHash       String
+  phone              String             @unique
+  fullName           String?
+  roles              UserRole[]
+  isActive           Boolean            @default(true)
+  mustChangePassword Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  patientsCreated    Patient[]          @relation("UserCreatedPatients")
+  visitsRecorded     Visit[]            @relation("UserRecordedANC")
+  ultrasoundScans    Ultrasound[]
   // gbvcases          GBVCase[]
   // consultations     Consultation[]
-  syncLogs        SyncLog[]
-  refreshTokens   RefreshToken[]
-  auditLogs       AuditLog[]
-  gbvreports      GBVReport[]
-  referralsCreated Referral[]
+  syncLogs           SyncLog[]
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]
+  gbvreports         GBVReport[]
+  referralsCreated   Referral[]
+  passwordResetOTPs  PasswordResetOTP[]
 }
 
 model Role {
@@ -112,17 +114,18 @@ enum Language {
 }
 
 model Patient {
-  id               String    @id @default(uuid())
+  id               String   @id @default(uuid())
   fullName         String
-  unfpId           String    @unique
+  unfpId           String   @unique
   phone            String?
-  dob              DateTime?
+  // dob              DateTime?
+  age              Int?
   address          String?
   emergencyContact String?
   // photoUrl        String?
-  createdAt        DateTime  @default(now())
+  createdAt        DateTime @default(now())
   createdById      String
-  createdBy        User      @relation("UserCreatedPatients", fields: [createdById], references: [id])
+  createdBy        User     @relation("UserCreatedPatients", fields: [createdById], references: [id])
   // demographics    PatientDemographics?
 
   visits      Visit[]
@@ -131,7 +134,7 @@ model Patient {
   // consultations   Consultation[]
   gbvreports  GBVReport[]
   ultrasounds Ultrasound[]
-  referrals   Referral[] 
+  referrals   Referral[]
   pregnancies Pregnancy[]
 }
 
@@ -146,27 +149,27 @@ model Patient {
 // }
 
 model Visit {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   patientId    String
-  pregnancyId   String?
+  pregnancyId  String?
   recordedById String
 
-  visitDate       DateTime
-  visitNumber   Int  ?
-  visitType     String ?
-  gestationalAge  Int? //remove
-  bloodPressure   String?
-  temperature     Float?
+  visitDate      DateTime
+  visitNumber    Int?
+  visitType      String?
+  gestationalAge Int? //remove
+  bloodPressure  String?
+  temperature    Float?
   // bpSystolic        Int
   // bpDiastolic       Int
-  weight          Float?
-  symptoms        String?
-  notes           String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  weight         Float?
+  symptoms       String?
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
   // riskScore         RiskScore
-  pregnancy       Pregnancy?    @relation(fields: [pregnancyId], references: [id])
-  
+  pregnancy      Pregnancy? @relation(fields: [pregnancyId], references: [id])
+
   patient         Patient      @relation(fields: [patientId], references: [id])
   recordedBy      User         @relation("UserRecordedANC", fields: [recordedById], references: [id])
   ultrasoundScans Ultrasound[]
@@ -249,20 +252,21 @@ enum SyncStatus {
 }
 
 model Referral {
-  id            String   @id @default(uuid())
-  patientId     String
-  createdById   String
-  referredTo    String        // hospital or facility name
-  reason        String        // clinical reason for referral
-  notesEncrypted String?      // encrypted notes (sensitive)
-  attachmentUrl String?       // optional S3 document
-  status        ReferralStatus @default(INITIATED)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String         @id @default(uuid())
+  patientId      String
+  createdById    String
+  referredTo     String // hospital or facility name
+  reason         String // clinical reason for referral
+  notesEncrypted String? // encrypted notes (sensitive)
+  attachmentUrl  String? // optional S3 document
+  status         ReferralStatus @default(INITIATED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  patient      Patient @relation(fields: [patientId], references: [id])
-  createdBy    User    @relation(fields: [createdById], references: [id])
+  patient   Patient @relation(fields: [patientId], references: [id])
+  createdBy User    @relation(fields: [createdById], references: [id])
 }
+
 enum ReferralStatus {
   INITIATED
   SENT
@@ -272,14 +276,27 @@ enum ReferralStatus {
 }
 
 model Pregnancy {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   patientId    String
   startDate    DateTime
   estimatedDue DateTime?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  visits       Visit[]
-  patient      Patient  @relation(fields: [patientId], references: [id])
+  visits  Visit[]
+  patient Patient @relation(fields: [patientId], references: [id])
+}
+
+model PasswordResetOTP {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  code      String
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, code])
+  @@index([expiresAt])
 }

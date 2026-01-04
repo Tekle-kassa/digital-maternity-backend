@@ -8,9 +8,11 @@ import crypto from "crypto";
 import { log } from "../common/audit.service";
 import config from "../config";
 import { AppError } from "../utils/AppError";
+import { OTPService } from "./otp.service";
 
 export class AuthService {
   static signAccessToken(payload: object) {
+    console.log(payload);
     return jwt.sign(payload, config.jwt.accessSecret, {
       expiresIn: config.jwt.accessExpiresIn,
     } as SignOptions);
@@ -54,6 +56,7 @@ export class AuthService {
     }
     const roles = user.roles.map((r) => r.role.name);
     const accessToken = this.signAccessToken({ uid: user.id, roles });
+
     const refreshToken = this.signRefreshToken({ uid: user.id });
     const tokenHash = crypto
       .createHash("sha256")
@@ -180,5 +183,75 @@ export class AuthService {
     await log(user.id, "auth.refresh", {}, ip ?? null);
 
     return { accessToken: newAccess, refreshToken: newRefresh };
+  }
+
+  static async forgotPassword(input: { phone: string; ip?: string }) {
+    const { phone, ip } = input;
+
+    // Find user by phone
+    const user = await AuthRepository.findUserByPhone(phone);
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      // Just return success message
+      return {
+        message: "If a user with this phone exists, an OTP code has been sent.",
+      };
+    }
+
+    // Generate OTP
+    const otpCode = OTPService.generateOTP();
+    const expiresAt = OTPService.getOTPExpiration();
+
+    // Save OTP to database
+    await AuthRepository.createPasswordResetOTP(user.id, otpCode, expiresAt);
+
+    // Send OTP to user's phone
+    await OTPService.sendOTP(phone, otpCode);
+
+    await log(user.id, "auth.forgotPassword", { phone }, ip ?? null);
+
+    return {
+      message: "If a user with this phone exists, an OTP code has been sent.",
+    };
+  }
+
+  static async resetPassword(input: {
+    phone: string;
+    otpCode: string;
+    newPassword: string;
+    ip?: string;
+  }) {
+    const { phone, otpCode, newPassword, ip } = input;
+
+    // Find user by phone
+    const user = await AuthRepository.findUserByPhone(phone);
+    if (!user) {
+      throw new AppError("Invalid phone or OTP code", 400);
+    }
+
+    // Find valid OTP
+    const otpRecord = await AuthRepository.findValidPasswordResetOTP(
+      user.id,
+      otpCode
+    );
+    if (!otpRecord) {
+      throw new AppError("Invalid or expired OTP code", 400);
+    }
+
+    // Mark OTP as used
+    await AuthRepository.markOTPAsUsed(otpRecord.id);
+
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
+
+    // Update password and set mustChangePassword to false
+    await AuthRepository.updateUser(user.id, {
+      passwordHash: newPasswordHash,
+      mustChangePassword: false,
+    });
+
+    await log(user.id, "auth.resetPassword", {}, ip ?? null);
+
+    return { message: "Password reset successfully. You can now login." };
   }
 }

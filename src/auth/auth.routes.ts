@@ -6,8 +6,8 @@ const router = Router();
 
 router.post(
   "/register",
-  authenticate,
-  authorizeRoles("ADMIN"),
+  // authenticate,
+  // authorizeRoles("ADMIN"),
   AuthController.register
 );
 router.post("/login", AuthController.login);
@@ -17,4 +17,6 @@ router.post(
   "/first-time-change-password",
   AuthController.firstTimeChangePassword
 );
+router.post("/forgot-password", AuthController.forgotPassword);
+router.post("/reset-password", AuthController.resetPassword);
 export default router;

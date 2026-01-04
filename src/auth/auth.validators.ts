@@ -26,3 +26,13 @@ export const firstTimeChangePasswordSchema = z.object({
   initialPassword: z.string().min(1, "Initial password is required"),
   newPassword: z.string().min(4, "New password must be at least 4 characters"),
 });
+
+export const forgotPasswordSchema = z.object({
+  phone: z.string().min(1, "Phone is required"),
+});
+
+export const resetPasswordSchema = z.object({
+  phone: z.string().min(1, "Phone is required"),
+  otpCode: z.string().length(6, "OTP code must be 6 digits"),
+  newPassword: z.string().min(4, "New password must be at least 4 characters"),
+});

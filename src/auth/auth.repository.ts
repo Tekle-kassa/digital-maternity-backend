@@ -63,4 +63,46 @@ export class AuthRepository {
       data,
     });
   }
+
+  static async createPasswordResetOTP(
+    userId: string,
+    code: string,
+    expiresAt: Date
+  ) {
+    // Invalidate any existing unused OTPs for this user
+    await prisma.passwordResetOTP.updateMany({
+      where: { userId, used: false },
+      data: { used: true },
+    });
+
+    return prisma.passwordResetOTP.create({
+      data: { userId, code, expiresAt },
+    });
+  }
+
+  static async findValidPasswordResetOTP(userId: string, code: string) {
+    return prisma.passwordResetOTP.findFirst({
+      where: {
+        userId,
+        code,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+    });
+  }
+
+  static async markOTPAsUsed(otpId: string) {
+    return prisma.passwordResetOTP.update({
+      where: { id: otpId },
+      data: { used: true },
+    });
+  }
+
+  static async cleanupExpiredOTPs() {
+    return prisma.passwordResetOTP.deleteMany({
+      where: {
+        OR: [{ expiresAt: { lt: new Date() } }, { used: true }],
+      },
+    });
+  }
 }

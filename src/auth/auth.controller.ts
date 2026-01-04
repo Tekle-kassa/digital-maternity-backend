@@ -3,15 +3,16 @@ import { AuthService } from "./auth.service";
 import {
   changePasswordSchema,
   firstTimeChangePasswordSchema,
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
 } from "./auth.validators";
 
 export class AuthController {
   static async register(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = registerSchema.parse(req.body);
-      console.log((req as any).user!);
       const { phone, password, fullName } = parsed;
       const user = await AuthService.register({
         phone,
@@ -80,6 +81,36 @@ export class AuthController {
       const data = await AuthService.firstTimeChangePassword({
         phone,
         initialPassword,
+        newPassword,
+        ip: req.ip,
+      });
+      res.status(200).json({ success: true, ...data });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const parsed = forgotPasswordSchema.parse(req.body);
+      const { phone } = parsed;
+      const data = await AuthService.forgotPassword({
+        phone,
+        ip: req.ip,
+      });
+      res.status(200).json({ success: true, ...data });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const parsed = resetPasswordSchema.parse(req.body);
+      const { phone, otpCode, newPassword } = parsed;
+      const data = await AuthService.resetPassword({
+        phone,
+        otpCode,
         newPassword,
         ip: req.ip,
       });
