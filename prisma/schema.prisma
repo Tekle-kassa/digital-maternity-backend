@@ -40,6 +40,10 @@ model User {
   gbvreports         GBVReport[]
   referralsCreated   Referral[]
   passwordResetOTPs  PasswordResetOTP[]
+  deliveries         Delivery[]
+  pncVisits          PNCVisit[]
+  gbvScreenings      GBVScreening[]
+  srhRegistrations   SRHRegistration[]
 }
 
 model Role {
@@ -117,10 +121,19 @@ model Patient {
   id               String   @id @default(uuid())
   fullName         String
   unfpId           String   @unique
+  cardNo           String? // Card number from UI
   phone            String?
+  email            String?
   // dob              DateTime?
   age              Int?
   address          String?
+  subCity          String? // Sub-city from UI
+  woreda           String? // Woreda from UI
+  kebele           String? // Kebele from UI
+  houseNo          String? // House number from UI
+  facility         String? // Name of Facility from UI
+  maritalStatus    String? // Marital Status from UI
+  idNumber         String? // ID (Number or Photo) from UI
   emergencyContact String?
   // photoUrl        String?
   createdAt        DateTime @default(now())
@@ -128,14 +141,19 @@ model Patient {
   createdBy        User     @relation("UserCreatedPatients", fields: [createdById], references: [id])
   // demographics    PatientDemographics?
 
-  visits      Visit[]
+  visits           Visit[]
   // ultrasoundScans Ultrasound[]
   // gbvCases        GBVCase[]
   // consultations   Consultation[]
-  gbvreports  GBVReport[]
-  ultrasounds Ultrasound[]
-  referrals   Referral[]
-  pregnancies Pregnancy[]
+  gbvreports       GBVReport[]
+  ultrasounds      Ultrasound[]
+  referrals        Referral[]
+  pregnancies      Pregnancy[]
+  ancRecords       ANCRecord[]
+  deliveries       Delivery[]
+  pncVisits        PNCVisit[]
+  gbvScreenings    GBVScreening[]
+  srhRegistrations SRHRegistration[]
 }
 
 // model PatientDemographics {
@@ -199,20 +217,117 @@ model Ultrasound {
 }
 
 model GBVReport {
-  id                          String    @id @default(uuid())
+  id                          String         @id @default(uuid())
   patientId                   String
-  patient                     Patient   @relation(fields: [patientId], references: [id])
+  patient                     Patient        @relation(fields: [patientId], references: [id])
   incidentType                String?
   incidentDate                DateTime?
   allegedPerpetratorEncrypted String? // encrypted JSON/string
   victimStatementEncrypted    String?
   referralActionEncrypted     String?
   attachmentUrl               String?
-  highRisk                    Boolean   @default(false)
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
+  highRisk                    Boolean        @default(false)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
   recordedById                String
-  recordedBy                  User      @relation(fields: [recordedById], references: [id])
+  recordedBy                  User           @relation(fields: [recordedById], references: [id])
+  gbvScreenings               GBVScreening[]
+}
+
+model GBVScreening {
+  id           String @id @default(uuid())
+  patientId    String
+  recordedById String
+
+  // Consent
+  survivorConsentSignature   String? // Survivor signature
+  caseWorkerConsentSignature String? // Case worker signature
+
+  // Comprehensive GBV History
+  gbvHistory String? // Comprehensive GBV history
+
+  // Vital Signs
+  temperature      String? // Temperature (in °c/°f)
+  weightKg         Float? // Weight (kg)
+  heightCm         Float? // Height (cm)
+  bmiIndex         Float? // BMI Index (auto-calculating)
+  bloodPressure    String? // Blood Pressure (in mmHg)
+  pulse            String? // Pulse (in b/min)
+  respiratoryRate  String? // Respiratory Rate
+  oxygenSaturation String? // Oxygen Saturation
+
+  // Physical Examination
+  physicalExamination String? // Physical Examination notes
+
+  // Working Diagnosis
+  workingDiagnosis String? // GBV Screening and Diagnose
+
+  // Laboratory
+  laboratoryResults String? // Laboratory results
+
+  // Ultrasound Request
+  typeOfUltrasound              String? // Type of ultrasound
+  smartUltrasoundRecommendation String? // Smart Ultrasound Recommendation
+
+  // Treatment Plan
+  treatmentPlan     String? // Treatment plan
+  treatmentRx       String? // Treatment (Rx)
+  continuationSheet String? // Continuation Sheet
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  recordedBy  User       @relation(fields: [recordedById], references: [id])
+  gbvReport   GBVReport? @relation(fields: [gbvReportId], references: [id])
+  gbvReportId String?
+}
+
+model SRHRegistration {
+  id           String @id @default(uuid())
+  patientId    String
+  recordedById String
+
+  // Consent
+  clientConsentSignature             String? // SRH Client signature
+  healthProfessionalConsentSignature String? // Health Professional signature
+
+  // History
+  history String? // History
+
+  // Vital Signs
+  temperature      String? // Temperature (in °c/°f)
+  weightKg         Float? // Weight (kg)
+  heightCm         Float? // Height (cm)
+  bmiIndex         Float? // BMI Index (auto-calculating)
+  bloodPressure    String? // Blood Pressure (in mmHg)
+  pulse            String? // Pulse (in b/min)
+  respiratoryRate  String? // Respiratory Rate
+  oxygenSaturation String? // Oxygen Saturation
+
+  // Physical Examination
+  physicalExamination String? // Physical Examination notes
+
+  // Working Diagnosis
+  workingDiagnosis String? // Working Diagnosis
+
+  // Laboratory
+  laboratoryResults String? // Laboratory results
+
+  // Ultrasound Request
+  typeOfUltrasound              String? // Type of ultrasound
+  smartUltrasoundRecommendation String? // Smart Ultrasound Recommendation
+
+  // Treatment Plan
+  treatmentPlan     String? // Treatment plan
+  treatmentRx       String? // Treatment (Rx)
+  continuationSheet String? // Continuation Sheet
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient    Patient @relation(fields: [patientId], references: [id])
+  recordedBy User    @relation(fields: [recordedById], references: [id])
 }
 
 // model Consultation {
@@ -284,8 +399,9 @@ model Pregnancy {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  visits  Visit[]
-  patient Patient @relation(fields: [patientId], references: [id])
+  visits     Visit[]
+  patient    Patient    @relation(fields: [patientId], references: [id])
+  deliveries Delivery[]
 }
 
 model PasswordResetOTP {
@@ -299,4 +415,207 @@ model PasswordResetOTP {
 
   @@index([userId, code])
   @@index([expiresAt])
+}
+
+model ANCRecord {
+  id        String  @id @default(uuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  // Basic Information (cont'd)
+  lmp           DateTime? // Last Menstrual Period
+  edd           DateTime? // Estimated Due Date
+  gravida       Int? // Number of pregnancies
+  para          Int? // Number of births
+  abortion      Int? // Number of abortions
+  ectopicPreg   Int? // Number of ectopic pregnancies
+  childrenAlive Int? // Number of children alive
+
+  // General Medical History
+  diabetesMellitus          Boolean?
+  cardiacDisease            Boolean?
+  chronicHypertension       Boolean?
+  otherMedicalCondition     Boolean?
+  otherMedicalConditionText String?
+
+  // Lab Tests
+  vdrl         String? // VDRL test result
+  hiv          String? // HIV test result
+  hbsAg        String? // HBs Ag test result
+  rbs          String? // RBS (Random Blood Sugar)
+  fbs          String? // FBS (Fasting Blood Sugar)
+  bloodGroupRh String? // Blood Group & Rh
+  ua           String? // UA (Urinalysis)
+
+  // Supplement
+  td String? // TD1, TD2, TD3, TD4, TD5
+
+  // Initial Evaluation: General Exam
+  generalExamGeneral String?
+  generalExamPallor  String?
+  jaundice           Boolean?
+  chestAbnormality   Boolean?
+  heartAbnormality   Boolean?
+
+  // Initial Evaluation: Gyn Exam
+  vulvarUlcer      Boolean?
+  vaginalDischarge Boolean?
+  pelvicMass       Boolean?
+  cervicalLesion   Boolean?
+  uterineSizeWks   Int? // Uterine size in weeks
+
+  // Counseling/Testing
+  dangerSignsAdvised       Boolean?
+  birthPreparednessAdvised Boolean?
+  motherHivTestAccepted    Boolean?
+  hivTestResult            String? // R, NR, I
+
+  // HIV + Care & Follow-up
+  hivTestResultReceived  Boolean?
+  counseledInfantFeeding Boolean?
+  referredForCare        Boolean?
+  partnerHivTestResult   String? // R, NR, I
+
+  // Present Pregnancy: Follow up
+  gaLmp                   String? // Gestational Age (LMP)
+  complaints              String?
+  bloodPressure           String?
+  weightKg                Float?
+  pallor                  String?
+  hemoglobin              String? // Hgb
+  uterineHeightWks        Int? // Uterine Height in Weeks
+  presentation            String?
+  descent                 String?
+  fetalHeartRate          String? // FHR
+  remarks                 String?
+  nextFollowUpDate        DateTime?
+  dangerSignsIdentified   String?
+  actionAdviceCounselling String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Delivery {
+  id           String  @id @default(uuid())
+  patientId    String
+  pregnancyId  String?
+  recordedById String
+
+  // Delivery Details
+  deliveryDate DateTime?
+  deliveryTime String?
+
+  // AMTSL (Active Management of Third Stage of Labor)
+  amtsl String? // Ergomtrine, Oxytocine, Misoprostol
+
+  // Placenta
+  placenta String? // Completed, Incomplete, CCT, MRP
+
+  // Laceration
+  laceration String? // 1st Degree, 2nd Degree, 3rd Degree
+
+  // Management
+  obstetricCxManaged     Boolean? @default(false)
+  aphManaged             Boolean? @default(false)
+  rupturedUx             Boolean? @default(false)
+  eclampsiaManaged       Boolean? @default(false)
+  pphManaged             Boolean? @default(false)
+  promSepsisManaged      Boolean? @default(false)
+  obstPrologLaborManaged Boolean? @default(false)
+
+  // HIV Details
+  hivCounsTestingOffered String?
+  hivTestingAccepted     String?
+  hivTestResult          String?
+  arvpxForMothers        String? // ARVPX for mothers (by type)
+  arvpxForNb             String? // ARVPX for NB (by type)
+  feedingOptionEbf       String?
+  rf                     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient    Patient    @relation(fields: [patientId], references: [id])
+  pregnancy  Pregnancy? @relation(fields: [pregnancyId], references: [id])
+  recordedBy User       @relation(fields: [recordedById], references: [id])
+  newborns   Newborn[]
+  pncVisits  PNCVisit[]
+}
+
+model Newborn {
+  id         String @id @default(uuid())
+  deliveryId String
+
+  // Newborn Details
+  quantity   String? // Single, Multiple
+  sex        String? // Male, Female
+  termStatus String? // Term, Preterm
+  alive      Boolean? @default(true)
+  apgarScore Int?
+  sb         String? // Mac, Fresh (Stillbirth)
+
+  // Measurements
+  birthWeightGm Float? // Birth weight in grams
+  lengthCm      Float? // Length in cm
+
+  // Care
+  vitK              Boolean? @default(false)
+  ttc               Boolean? @default(false)
+  babyMotherBonding Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+}
+
+model PNCVisit {
+  id           String  @id @default(uuid())
+  patientId    String
+  deliveryId   String? // Link to delivery record
+  recordedById String
+
+  visitDate DateTime @default(now())
+
+  // Postpartum Visit Part 1
+  bloodPressure         String? // BP
+  tpr                   String? // Temperature, Pulse, Respiration
+  temperature           Float?
+  uterusContracted      String? // Uterus Contracted/Look for PPH
+  dribblingLeakingUrine String? // Dribbling, Leaking Urine
+
+  // Postpartum Visit Part 2
+  anemia                String?
+  vaginalDischarge      String? // Vaginal discharge (after 4wks Delivery)
+  breast                String?
+  vitaminA              String?
+  counselingDangerSigns String? // Counseling danger signs EPI, Use of ITN given
+
+  // Postpartum Visit Part 3 - Baby
+  babyBreathing     String?
+  babyBreastFeeding String?
+  babyWeightGm      Float? // Baby Wt.(gm.)
+  immunization      String?
+
+  // Postpartum Visit Part 4 - HIV
+  hivTested       String?
+  hivTestResult   String? // R/NR
+  arvPxForMother  String? // ARV Px for Mother
+  arvPxForNewborn String? // ARV Px for Newborn
+  feedingOption   String? // EBF/RF
+
+  // Postpartum Visit Part 5
+  motherReferredToCare   String? // Mother Referred to Care & Support
+  newbornReferredToCare  String? // Newborn referred to Chronic HIV infant Care
+  fpCounseledAndProvided String? // FP counseled & Provided
+  remark                 String?
+  actionTaken            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient    Patient   @relation(fields: [patientId], references: [id])
+  delivery   Delivery? @relation(fields: [deliveryId], references: [id])
+  recordedBy User      @relation(fields: [recordedById], references: [id])
 }

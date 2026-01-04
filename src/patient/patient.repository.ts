@@ -2,10 +2,19 @@ import prisma from "../config/prisma";
 export interface CreatePatientDTO {
   //   unfpId: string;
   fullName: string;
+  cardNo?: string;
   phone?: string;
+  email?: string;
   // dob?: Date;
   age?: number;
   address?: string;
+  subCity?: string;
+  woreda?: string;
+  kebele?: string;
+  houseNo?: string;
+  facility?: string;
+  maritalStatus?: string;
+  idNumber?: string;
   emergencyContact?: string;
   createdById: string;
 }

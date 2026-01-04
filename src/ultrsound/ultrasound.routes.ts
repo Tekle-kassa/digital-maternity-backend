@@ -7,6 +7,41 @@ const router = Router();
 
 const CLINICAL_ROLES = ["MIDWIFE", "DOCTOR"];
 
+/**
+ * @swagger
+ * /api/v1/ultrasound:
+ *   post:
+ *     summary: Create ultrasound scan (with image upload)
+ *     tags: [Ultrasound]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - patientId
+ *               - image
+ *             properties:
+ *               patientId:
+ *                 type: string
+ *                 format: uuid
+ *               visitId:
+ *                 type: string
+ *                 format: uuid
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *               description:
+ *                 type: string
+ *               gestationalAge:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Ultrasound scan created successfully
+ */
 router.post(
   "/",
   authenticate,
@@ -15,6 +50,25 @@ router.post(
   UltrasoundController.create
 );
 
+/**
+ * @swagger
+ * /api/v1/ultrasound/patient/{patientId}:
+ *   get:
+ *     summary: Get all ultrasound scans for a patient
+ *     tags: [Ultrasound]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: patientId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: List of ultrasound scans
+ */
 router.get(
   "/patient/:patientId",
   authenticate,
@@ -22,6 +76,25 @@ router.get(
   UltrasoundController.listByPatient
 );
 
+/**
+ * @swagger
+ * /api/v1/ultrasound/{id}:
+ *   get:
+ *     summary: Get ultrasound scan by ID
+ *     tags: [Ultrasound]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Ultrasound scan details
+ */
 router.get(
   "/:id",
   authenticate,
@@ -29,6 +102,25 @@ router.get(
   UltrasoundController.getOne
 );
 
+/**
+ * @swagger
+ * /api/v1/ultrasound/{id}:
+ *   patch:
+ *     summary: Update ultrasound scan
+ *     tags: [Ultrasound]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Ultrasound scan updated successfully
+ */
 router.patch(
   "/:id",
   authenticate,
@@ -36,6 +128,25 @@ router.patch(
   UltrasoundController.update
 );
 
+/**
+ * @swagger
+ * /api/v1/ultrasound/{id}:
+ *   delete:
+ *     summary: Delete ultrasound scan
+ *     tags: [Ultrasound]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Ultrasound scan deleted successfully
+ */
 router.delete(
   "/:id",
   authenticate,

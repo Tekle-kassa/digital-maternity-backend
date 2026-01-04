@@ -1,17 +1,15 @@
 import { Router } from "express";
-import { VisitController } from "./visit.controller";
-import { authenticate, authorizeRoles } from "../middleware/authMiddleware";
+import { SRHController } from "./srh.controller";
+import { authenticate } from "../middleware/authMiddleware";
 
 const router = Router();
 
-const CLINICAL_ROLES = ["MIDWIFE", "DOCTOR"];
-
 /**
  * @swagger
- * /api/v1/visit:
+ * /api/v1/srh:
  *   post:
- *     summary: Create a visit record
- *     tags: [Visits]
+ *     summary: Create SRH registration record
+ *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -22,37 +20,34 @@ const CLINICAL_ROLES = ["MIDWIFE", "DOCTOR"];
  *             type: object
  *             required:
  *               - patientId
- *               - visitDate
  *             properties:
  *               patientId:
  *                 type: string
  *                 format: uuid
- *               visitDate:
- *                 type: string
- *                 format: date-time
- *               bloodPressure:
+ *               history:
  *                 type: string
  *               temperature:
+ *                 type: string
+ *               weightKg:
  *                 type: number
- *               weight:
+ *               heightCm:
  *                 type: number
+ *               workingDiagnosis:
+ *                 type: string
+ *               treatmentPlan:
+ *                 type: string
  *     responses:
  *       201:
- *         description: Visit created successfully
+ *         description: SRH registration created successfully
  */
-router.post(
-  "/",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  VisitController.create
-);
+router.post("/", authenticate, SRHController.create);
 
 /**
  * @swagger
- * /api/v1/visit/{id}:
+ * /api/v1/srh/{id}:
  *   get:
- *     summary: Get visit by ID
- *     tags: [Visits]
+ *     summary: Get SRH registration by ID
+ *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -64,21 +59,16 @@ router.post(
  *           format: uuid
  *     responses:
  *       200:
- *         description: Visit details
+ *         description: SRH registration details
  */
-router.get(
-  "/:id",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  VisitController.getOne
-);
+router.get("/:id", authenticate, SRHController.getOne);
 
 /**
  * @swagger
- * /api/v1/visit/patient/{patientId}:
+ * /api/v1/srh/patient/{patientId}:
  *   get:
- *     summary: Get all visits for a patient
- *     tags: [Visits]
+ *     summary: Get all SRH registrations for a patient
+ *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -90,21 +80,16 @@ router.get(
  *           format: uuid
  *     responses:
  *       200:
- *         description: List of visits
+ *         description: List of SRH registrations
  */
-router.get(
-  "/patient/:patientId",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  VisitController.listByPatient
-);
+router.get("/patient/:patientId", authenticate, SRHController.getByPatient);
 
 /**
  * @swagger
- * /api/v1/visit/{id}:
+ * /api/v1/srh/{id}:
  *   patch:
- *     summary: Update visit
- *     tags: [Visits]
+ *     summary: Update SRH registration
+ *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -116,21 +101,16 @@ router.get(
  *           format: uuid
  *     responses:
  *       200:
- *         description: Visit updated successfully
+ *         description: SRH registration updated successfully
  */
-router.patch(
-  "/:id",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  VisitController.update
-);
+router.patch("/:id", authenticate, SRHController.update);
 
 /**
  * @swagger
- * /api/v1/visit/{id}:
+ * /api/v1/srh/{id}:
  *   delete:
- *     summary: Delete visit
- *     tags: [Visits]
+ *     summary: Delete SRH registration
+ *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -142,13 +122,8 @@ router.patch(
  *           format: uuid
  *     responses:
  *       200:
- *         description: Visit deleted successfully
+ *         description: SRH registration deleted successfully
  */
-router.delete(
-  "/:id",
-  authenticate,
-  authorizeRoles(...CLINICAL_ROLES),
-  VisitController.delete
-);
+router.delete("/:id", authenticate, SRHController.delete);
 
 export default router;
