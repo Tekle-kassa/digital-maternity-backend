@@ -13,7 +13,9 @@ import deliveryRoutes from "./delivery/delivery.routes";
 import pncRoutes from "./pnc/pnc.routes";
 import gbvScreeningRoutes from "./gbv-screening/gbv-screening.routes";
 import srhRoutes from "./srh/srh.routes";
+import analyticsRoutes from "./analytics/analytics.routes";
 import { swaggerSpec } from "./config/swagger";
+import prisma from "./config/prisma";
 dotenv.config();
 
 const app = express();
@@ -37,6 +39,20 @@ app.use("/api/v1/delivery", deliveryRoutes);
 app.use("/api/v1/pnc", pncRoutes);
 app.use("/api/v1/gbv-screening", gbvScreeningRoutes);
 app.use("/api/v1/srh", srhRoutes);
+app.use("/api/v1/analytics", analyticsRoutes);
 app.use(globalErrorHandler);
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+async function start() {
+  try {
+    await prisma.$connect();
+    console.log("Database connected ✓");
+  } catch (err) {
+    console.error("Database connection failed:", err);
+    process.exit(1);
+  }
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+start();
