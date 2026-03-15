@@ -3,11 +3,15 @@ import { z } from "zod";
 export const pncVisitSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
   deliveryId: z.string().optional(),
-  recordedById: z.string().min(1, "Recorded by ID is required"),
+  recordedById: z.string().min(1).optional(), // Set from auth if omitted
+
+  // Consent (PNC Medical Recording - Screen 1)
+  clientConsentSignature: z.string().optional(),
+  healthProfessionalConsentSignature: z.string().optional(),
 
   visitDate: z.coerce.date().optional(),
 
-  // Postpartum Visit Part 1
+  // Postpartum Visit Part 1 (Screen 2)
   bloodPressure: z.string().optional(),
   tpr: z.string().optional(),
   temperature: z.number().optional(),

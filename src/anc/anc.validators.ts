@@ -1,7 +1,19 @@
 import { z } from "zod";
 
+// Past obstetric history entry (UI: Year, GA, Mode of Delivery, Sex, Birth Weight kg)
+export const pastObstetricEntrySchema = z.object({
+  year: z.string().optional(),
+  ga: z.string().optional(),
+  modeOfDelivery: z.string().optional(),
+  sex: z.string().optional(),
+  birthWeightKg: z.union([z.number(), z.string()]).optional(),
+});
+
 export const ancRecordSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
+  // Consent (Register Client - Screen 1)
+  clientConsentSignature: z.string().optional(),
+  healthProfessionalConsentSignature: z.string().optional(),
   // Basic Information (cont'd)
   lmp: z.coerce.date().optional(),
   edd: z.coerce.date().optional(),
@@ -11,10 +23,16 @@ export const ancRecordSchema = z.object({
   ectopicPreg: z.number().int().nonnegative().optional(),
   childrenAlive: z.number().int().nonnegative().optional(),
 
+  // Past Obstetric History (array of entries)
+  pastObstetricHistory: z.array(pastObstetricEntrySchema).optional(),
+
   // General Medical History
   diabetesMellitus: z.boolean().optional(),
+  diabetesMellitusMoreInfo: z.string().optional(),
   cardiacDisease: z.boolean().optional(),
+  cardiacDiseaseMoreInfo: z.string().optional(),
   chronicHypertension: z.boolean().optional(),
+  chronicHypertensionMoreInfo: z.string().optional(),
   otherMedicalCondition: z.boolean().optional(),
   otherMedicalConditionText: z.string().optional(),
 
@@ -35,7 +53,9 @@ export const ancRecordSchema = z.object({
   generalExamPallor: z.string().optional(),
   jaundice: z.boolean().optional(),
   chestAbnormality: z.boolean().optional(),
+  chestAbnormalityMoreInfo: z.string().optional(),
   heartAbnormality: z.boolean().optional(),
+  heartAbnormalityMoreInfo: z.string().optional(),
 
   // Initial Evaluation: Gyn Exam
   vulvarUlcer: z.boolean().optional(),

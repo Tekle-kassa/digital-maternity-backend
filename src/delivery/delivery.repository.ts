@@ -19,18 +19,24 @@ export interface CreateDeliveryDTO {
   pregnancyId?: string;
   recordedById: string;
 
+  // Consent
+  clientConsentSignature?: string;
+  healthProfessionalConsentSignature?: string;
+
   // Delivery Details
   deliveryDate?: Date;
   deliveryTime?: string;
+  referral?: boolean;
+  referralInfo?: string;
 
-  // AMTSL (Active Management of Third Stage of Labor)
-  amtsl?: string; // Ergomtrine, Oxytocine, Misoprostol
+  // AMTSL
+  amtsl?: string;
 
   // Placenta
-  placenta?: string; // Completed, Incomplete, CCT, MRP
+  placenta?: string;
 
   // Laceration
-  laceration?: string; // 1st Degree, 2nd Degree, 3rd Degree
+  laceration?: string;
 
   // Management
   obstetricCxManaged?: boolean;
@@ -41,12 +47,16 @@ export interface CreateDeliveryDTO {
   promSepsisManaged?: boolean;
   obstPrologLaborManaged?: boolean;
 
+  // Delivery Assistance
+  deliveryAssistanceMeasures?: string;
+  deliveryAssistanceMore?: string;
+
   // HIV Details
   hivCounsTestingOffered?: string;
   hivTestingAccepted?: string;
   hivTestResult?: string;
-  arvpxForMothers?: string; // ARVPX for mothers (by type)
-  arvpxForNb?: string; // ARVPX for NB (by type)
+  arvpxForMothers?: string;
+  arvpxForNb?: string;
   feedingOptionEbf?: string;
   rf?: string;
 

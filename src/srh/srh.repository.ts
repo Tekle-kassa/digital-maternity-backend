@@ -9,6 +9,7 @@ export interface CreateSRHRegistrationDTO {
   healthProfessionalConsentSignature?: string;
 
   // History
+  srhServiceType?: string;
   history?: string;
 
   // Vital Signs
@@ -32,6 +33,7 @@ export interface CreateSRHRegistrationDTO {
 
   // Ultrasound Request
   typeOfUltrasound?: string;
+  ultrasoundMore?: string;
   smartUltrasoundRecommendation?: string;
 
   // Treatment Plan

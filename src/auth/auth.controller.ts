@@ -54,6 +54,20 @@ export class AuthController {
       next(err);
     }
   }
+
+  static async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { refreshToken } = req.body;
+      if (!refreshToken) {
+        return res.status(400).json({ success: false, message: "refreshToken is required" });
+      }
+      const data = await AuthService.logout({ refreshToken, ip: req.ip });
+      res.json({ success: true, ...data });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async changePassword(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = changePasswordSchema.parse(req.body);

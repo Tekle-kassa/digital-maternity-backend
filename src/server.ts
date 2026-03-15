@@ -14,6 +14,8 @@ import pncRoutes from "./pnc/pnc.routes";
 import gbvScreeningRoutes from "./gbv-screening/gbv-screening.routes";
 import srhRoutes from "./srh/srh.routes";
 import analyticsRoutes from "./analytics/analytics.routes";
+import messagesRoutes from "./messages/messages.routes";
+import profileRoutes from "./profile/profile.routes";
 import { swaggerSpec } from "./config/swagger";
 import prisma from "./config/prisma";
 dotenv.config();
@@ -40,6 +42,8 @@ app.use("/api/v1/pnc", pncRoutes);
 app.use("/api/v1/gbv-screening", gbvScreeningRoutes);
 app.use("/api/v1/srh", srhRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
+app.use("/api/v1/messages", messagesRoutes);
+app.use("/api/v1/profile", profileRoutes);
 app.use(globalErrorHandler);
 
 const PORT = process.env.PORT || 3000;

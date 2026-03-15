@@ -16,6 +16,7 @@ export interface CreatePatientDTO {
   maritalStatus?: string;
   idNumber?: string;
   emergencyContact?: string;
+  emergencyPhone?: string;
   createdById: string;
 }
 

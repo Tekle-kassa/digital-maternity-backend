@@ -5,6 +5,10 @@ export interface CreatePNCVisitDTO {
   deliveryId?: string;
   recordedById: string;
 
+  // Consent
+  clientConsentSignature?: string;
+  healthProfessionalConsentSignature?: string;
+
   visitDate?: Date;
 
   // Postpartum Visit Part 1

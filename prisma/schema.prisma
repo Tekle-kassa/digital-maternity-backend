@@ -24,6 +24,9 @@ model User {
   passwordHash       String
   phone              String             @unique
   fullName           String?
+  displayId          String?            // Display ID for profile (e.g. 10000100)
+  profileImageUrl    String?            // Avatar / profile picture URL
+  preferredLanguage  String?            // e.g. EN, SO (Language enum)
   roles              UserRole[]
   isActive           Boolean            @default(true)
   mustChangePassword Boolean            @default(true)
@@ -44,6 +47,10 @@ model User {
   pncVisits          PNCVisit[]
   gbvScreenings      GBVScreening[]
   srhRegistrations   SRHRegistration[]
+  conversationsAsUser1 Conversation[] @relation("User1Conversations")
+  conversationsAsUser2 Conversation[] @relation("User2Conversations")
+  messagesSent        Message[]       @relation("MessagesSent")
+  messagesReceived    Message[]       @relation("MessagesReceived")
 }
 
 model Role {
@@ -135,6 +142,7 @@ model Patient {
   maritalStatus    String? // Marital Status from UI
   idNumber         String? // ID (Number or Photo) from UI
   emergencyContact String?
+  emergencyPhone   String? // Emergency Phone Number from UI
   // photoUrl        String?
   createdAt        DateTime @default(now())
   createdById      String
@@ -225,6 +233,8 @@ model GBVReport {
   allegedPerpetratorEncrypted String? // encrypted JSON/string
   victimStatementEncrypted    String?
   referralActionEncrypted     String?
+  referral                    Boolean? // Referral Yes/No (Basic Information screen)
+  referralInfo                String? // Insert Referral Info (optional)
   attachmentUrl               String?
   highRisk                    Boolean        @default(false)
   createdAt                   DateTime       @default(now())
@@ -265,8 +275,16 @@ model GBVScreening {
   // Laboratory
   laboratoryResults String? // Laboratory results
 
+  // Test Results (Pregnancy, HIV, STI, PEP, Emergency Contraceptive)
+  pregnancyTestingResults       String? // Pregnancy Testing results
+  hivTestingResults             String? // HIV Testing results
+  stiTestingResults             String? // STI Testing results
+  postExposureProphylaxisTreatment String? // Post-Exposure Prophylaxis Treatment
+  emergencyContraceptiveProvision  String? // Emergency Contraceptive Provision for FP
+
   // Ultrasound Request
   typeOfUltrasound              String? // Type of ultrasound
+  ultrasoundMore               String? // More info (optional)
   smartUltrasoundRecommendation String? // Smart Ultrasound Recommendation
 
   // Treatment Plan
@@ -293,10 +311,11 @@ model SRHRegistration {
   healthProfessionalConsentSignature String? // Health Professional signature
 
   // History
-  history String? // History
+  srhServiceType String? // SRH Service Type (Family Planning, Routine Care, STI/HIV, Others)
+  history         String? // History
 
   // Vital Signs
-  temperature      String? // Temperature (in °c/°f)
+  temperature      String? // Temperature (in °C)
   weightKg         Float? // Weight (kg)
   heightCm         Float? // Height (cm)
   bmiIndex         Float? // BMI Index (auto-calculating)
@@ -316,6 +335,7 @@ model SRHRegistration {
 
   // Ultrasound Request
   typeOfUltrasound              String? // Type of ultrasound
+  ultrasoundMore                String? // More info (optional)
   smartUltrasoundRecommendation String? // Smart Ultrasound Recommendation
 
   // Treatment Plan
@@ -422,6 +442,10 @@ model ANCRecord {
   patientId String
   patient   Patient @relation(fields: [patientId], references: [id])
 
+  // Consent (Register Client - Screen 1)
+  clientConsentSignature             String? // Client consent signature
+  healthProfessionalConsentSignature String? // Health professional consent signature
+
   // Basic Information (cont'd)
   lmp           DateTime? // Last Menstrual Period
   edd           DateTime? // Estimated Due Date
@@ -431,12 +455,18 @@ model ANCRecord {
   ectopicPreg   Int? // Number of ectopic pregnancies
   childrenAlive Int? // Number of children alive
 
+  // Past Obstetric History (array: year, GA, mode of delivery, sex, birth weight kg)
+  pastObstetricHistory Json?
+
   // General Medical History
-  diabetesMellitus          Boolean?
-  cardiacDisease            Boolean?
-  chronicHypertension       Boolean?
-  otherMedicalCondition     Boolean?
-  otherMedicalConditionText String?
+  diabetesMellitus             Boolean?
+  diabetesMellitusMoreInfo     String?
+  cardiacDisease               Boolean?
+  cardiacDiseaseMoreInfo       String?
+  chronicHypertension          Boolean?
+  chronicHypertensionMoreInfo  String?
+  otherMedicalCondition        Boolean?
+  otherMedicalConditionText    String?
 
   // Lab Tests
   vdrl         String? // VDRL test result
@@ -451,11 +481,13 @@ model ANCRecord {
   td String? // TD1, TD2, TD3, TD4, TD5
 
   // Initial Evaluation: General Exam
-  generalExamGeneral String?
-  generalExamPallor  String?
-  jaundice           Boolean?
-  chestAbnormality   Boolean?
-  heartAbnormality   Boolean?
+  generalExamGeneral       String?
+  generalExamPallor        String?
+  jaundice                 Boolean?
+  chestAbnormality         Boolean?
+  chestAbnormalityMoreInfo String?
+  heartAbnormality         Boolean?
+  heartAbnormalityMoreInfo String?
 
   // Initial Evaluation: Gyn Exam
   vulvarUlcer      Boolean?
@@ -502,20 +534,26 @@ model Delivery {
   pregnancyId  String?
   recordedById String
 
-  // Delivery Details
+  // Consent (Delivery Summary Recording - Screen 1)
+  clientConsentSignature             String?
+  healthProfessionalConsentSignature String?
+
+  // Delivery Details (Screen 2)
   deliveryDate DateTime?
   deliveryTime String?
+  referral     Boolean? // Referral Yes/No
+  referralInfo String? // Optional referral details
 
   // AMTSL (Active Management of Third Stage of Labor)
-  amtsl String? // Ergomtrine, Oxytocine, Misoprostol
+  amtsl String? // Ergometrine, Oxytocin, Misoprostol
 
-  // Placenta
-  placenta String? // Completed, Incomplete, CCT, MRP
+  // Placenta (Completed, Incomplete, CCT, NRP)
+  placenta String?
 
-  // Laceration
-  laceration String? // 1st Degree, 2nd Degree, 3rd Degree
+  // Laceration (1st Degree, 2nd Degree, 3rd Degree)
+  laceration String?
 
-  // Management
+  // Management (Screen 3)
   obstetricCxManaged     Boolean? @default(false)
   aphManaged             Boolean? @default(false)
   rupturedUx             Boolean? @default(false)
@@ -524,14 +562,18 @@ model Delivery {
   promSepsisManaged      Boolean? @default(false)
   obstPrologLaborManaged Boolean? @default(false)
 
-  // HIV Details
+  // Delivery Assistance (Screen 4)
+  deliveryAssistanceMeasures String?
+  deliveryAssistanceMore     String?
+
+  // HIV Details (Screen 7 in UI)
   hivCounsTestingOffered String?
   hivTestingAccepted     String?
   hivTestResult          String?
-  arvpxForMothers        String? // ARVPX for mothers (by type)
-  arvpxForNb             String? // ARVPX for NB (by type)
-  feedingOptionEbf       String?
-  rf                     String?
+  arvpxForMothers        String? // ARV/PX for mothers (by type)
+  arvpxForNb             String? // ARV/PX for NB (by type)
+  feedingOptionEbf      String?
+  rf                     String? // Replacement feeding / BF
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -576,9 +618,13 @@ model PNCVisit {
   deliveryId   String? // Link to delivery record
   recordedById String
 
+  // Consent (PNC Medical Recording - Screen 1)
+  clientConsentSignature             String? // PNC Client consent signature
+  healthProfessionalConsentSignature String? // Health Professional consent signature
+
   visitDate DateTime @default(now())
 
-  // Postpartum Visit Part 1
+  // Postpartum Visit Part 1 (Screen 2 - Vitals & Uterine)
   bloodPressure         String? // BP
   tpr                   String? // Temperature, Pulse, Respiration
   temperature           Float?
@@ -618,4 +664,37 @@ model PNCVisit {
   patient    Patient   @relation(fields: [patientId], references: [id])
   delivery   Delivery? @relation(fields: [deliveryId], references: [id])
   recordedBy User      @relation(fields: [recordedById], references: [id])
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  user1Id   String   // canonical: user1Id < user2Id
+  user2Id   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user1    User     @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2    User     @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id, user2Id])
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String
+  senderId       String
+  recipientId    String
+  body           String
+  attachmentUrl  String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient    User         @relation("MessagesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([recipientId, readAt])
 }

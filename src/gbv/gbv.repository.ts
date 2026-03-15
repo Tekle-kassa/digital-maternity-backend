@@ -7,6 +7,8 @@ export interface CreateGBVDTO {
   allegedPerpetrator?: string;
   victimStatement?: string;
   referralAction?: string;
+  referral?: boolean; // Referral Yes/No (Basic Information)
+  referralInfo?: string; // Insert Referral Info (optional)
   attachmentUrl?: string;
   highRisk?: boolean;
 }
@@ -15,6 +17,8 @@ export interface UpdateGBVDTO {
   allegedPerpetrator?: string;
   victimStatement?: string;
   referralAction?: string;
+  referral?: boolean;
+  referralInfo?: string;
   attachmentUrl?: string;
   highRisk?: boolean;
 }
@@ -26,6 +30,8 @@ export class GBVRepository {
     allegedPerpetratorEncrypted?: string | null;
     victimStatementEncrypted?: string | null;
     referralActionEncrypted?: string | null;
+    referral?: boolean | null;
+    referralInfo?: string | null;
     attachmentUrl?: string | null;
     highRisk?: boolean;
   }) {
@@ -37,6 +43,8 @@ export class GBVRepository {
         allegedPerpetratorEncrypted: data.allegedPerpetratorEncrypted ?? null,
         victimStatementEncrypted: data.victimStatementEncrypted ?? null,
         referralActionEncrypted: data.referralActionEncrypted ?? null,
+        referral: data.referral ?? null,
+        referralInfo: data.referralInfo ?? null,
         attachmentUrl: data.attachmentUrl ?? null,
         highRisk: data.highRisk ?? false,
       },

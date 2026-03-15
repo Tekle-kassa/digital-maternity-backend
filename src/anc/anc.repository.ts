@@ -1,7 +1,19 @@
 import prisma from "../config/prisma";
+import type { Prisma } from "../generated/prisma/client";
+
+export interface PastObstetricEntry {
+  year?: string;
+  ga?: string;
+  modeOfDelivery?: string;
+  sex?: string;
+  birthWeightKg?: number | string;
+}
 
 export interface CreateANCRecordDTO {
   patientId: string;
+  // Consent
+  clientConsentSignature?: string;
+  healthProfessionalConsentSignature?: string;
   // Basic Information (cont'd)
   lmp?: Date;
   edd?: Date;
@@ -11,10 +23,16 @@ export interface CreateANCRecordDTO {
   ectopicPreg?: number;
   childrenAlive?: number;
 
+  // Past Obstetric History
+  pastObstetricHistory?: PastObstetricEntry[];
+
   // General Medical History
   diabetesMellitus?: boolean;
+  diabetesMellitusMoreInfo?: string;
   cardiacDisease?: boolean;
+  cardiacDiseaseMoreInfo?: string;
   chronicHypertension?: boolean;
+  chronicHypertensionMoreInfo?: string;
   otherMedicalCondition?: boolean;
   otherMedicalConditionText?: string;
 
@@ -35,7 +53,9 @@ export interface CreateANCRecordDTO {
   generalExamPallor?: string;
   jaundice?: boolean;
   chestAbnormality?: boolean;
+  chestAbnormalityMoreInfo?: string;
   heartAbnormality?: boolean;
+  heartAbnormalityMoreInfo?: string;
 
   // Initial Evaluation: Gyn Exam
   vulvarUlcer?: boolean;
@@ -76,7 +96,7 @@ export interface CreateANCRecordDTO {
 export class ANCRepository {
   static async create(data: CreateANCRecordDTO) {
     return prisma.aNCRecord.create({
-      data,
+      data: data as Prisma.ANCRecordUncheckedCreateInput,
       include: { patient: true },
     });
   }
@@ -97,9 +117,10 @@ export class ANCRepository {
   }
 
   static async update(id: string, data: Partial<CreateANCRecordDTO>) {
+    const { patientId: _omit, ...updateData } = data;
     return prisma.aNCRecord.update({
       where: { id },
-      data,
+      data: updateData as Prisma.ANCRecordUpdateInput,
       include: { patient: true },
     });
   }

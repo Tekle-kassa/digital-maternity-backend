@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ancRecordSchema } from "../anc/anc.validators";
+
 export const patientSchema = z.object({
   fullName: z.string().min(3),
   cardNo: z.string().optional(),
@@ -16,6 +18,7 @@ export const patientSchema = z.object({
   maritalStatus: z.string().optional(),
   idNumber: z.string().optional(),
   emergencyContact: z.string().optional(),
+  emergencyPhone: z.string().optional(),
 });
 
 export const createPatientSchema = z.object({
@@ -35,5 +38,12 @@ export const createPatientSchema = z.object({
   maritalStatus: z.string().optional(),
   idNumber: z.string().optional(),
   emergencyContact: z.string().optional(),
+  emergencyPhone: z.string().optional(),
   createdById: z.string(),
 });
+
+/** Combined schema for Register Client (full UI form in one request). Omits patientId (set server-side). */
+export const registerClientSchema = patientSchema.merge(
+  ancRecordSchema.omit({ patientId: true })
+);
+export type RegisterClientPayload = z.infer<typeof registerClientSchema>;

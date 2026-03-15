@@ -31,8 +31,16 @@ export interface CreateGBVScreeningDTO {
   // Laboratory
   laboratoryResults?: string;
 
+  // Test Results
+  pregnancyTestingResults?: string;
+  hivTestingResults?: string;
+  stiTestingResults?: string;
+  postExposureProphylaxisTreatment?: string;
+  emergencyContraceptiveProvision?: string;
+
   // Ultrasound Request
   typeOfUltrasound?: string;
+  ultrasoundMore?: string;
   smartUltrasoundRecommendation?: string;
 
   // Treatment Plan

@@ -27,6 +27,12 @@ const router = Router();
  *               incidentDate:
  *                 type: string
  *                 format: date
+ *               referral:
+ *                 type: boolean
+ *                 description: Referral Yes/No (Basic Information)
+ *               referralInfo:
+ *                 type: string
+ *                 description: Insert Referral Info (optional)
  *               attachment:
  *                 type: string
  *                 format: binary

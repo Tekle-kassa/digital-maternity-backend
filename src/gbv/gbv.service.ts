@@ -24,6 +24,8 @@ export class GBVService {
       allegedPerpetratorEncrypted: allegedEncrypted,
       victimStatementEncrypted: victimEncrypted,
       referralActionEncrypted: referralEncrypted,
+      referral: dto.referral,
+      referralInfo: dto.referralInfo,
       attachmentUrl: dto.attachmentUrl,
       highRisk: dto.highRisk ?? false,
     });
@@ -60,6 +62,8 @@ export class GBVService {
       allegedPerpetrator: alleged,
       victimStatement: victim,
       referralAction: referral,
+      referral: rec.referral,
+      referralInfo: rec.referralInfo,
       attachmentUrl: rec.attachmentUrl,
       highRisk: rec.highRisk,
       createdAt: rec.createdAt,
@@ -95,6 +99,8 @@ export class GBVService {
       data.victimStatementEncrypted = encryptField(dto.victimStatement);
     if (dto.referralAction)
       data.referralActionEncrypted = encryptField(dto.referralAction);
+    if (typeof dto.referral === "boolean") data.referral = dto.referral;
+    if (dto.referralInfo !== undefined) data.referralInfo = dto.referralInfo;
     if (dto.attachmentUrl) data.attachmentUrl = dto.attachmentUrl;
     if (typeof dto.highRisk === "boolean") data.highRisk = dto.highRisk;
 

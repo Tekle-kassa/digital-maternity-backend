@@ -1,9 +1,33 @@
 import { Request, Response, NextFunction } from "express";
 import { PatientService } from "./pateint.service";
 import { AuthRequest } from "../middleware/authMiddleware";
-import { patientSchema } from "./patient.validators";
+import { patientSchema, registerClientSchema } from "./patient.validators";
 
 export class PatientController {
+  /** Full Register Client flow (all UI form steps in one request). */
+  static async registerClient(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const parsed = registerClientSchema.parse(req.body);
+      const user = (req as AuthRequest).user!;
+      const { patient, ancRecord } = await PatientService.registerClient(
+        parsed,
+        user.id
+      );
+      res.status(201).json({
+        success: true,
+        message: "ANC case registered successfully.",
+        patient,
+        ancRecord,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const parsed = patientSchema.parse(req.body);

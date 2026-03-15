@@ -17,22 +17,28 @@ const newbornSchema = z.object({
 export const deliverySchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
   pregnancyId: z.string().optional(),
-  recordedById: z.string().min(1, "Recorded by ID is required"),
+  recordedById: z.string().min(1).optional(), // Set from auth if omitted
 
-  // Delivery Details
+  // Consent (Delivery Summary Recording - Screen 1)
+  clientConsentSignature: z.string().optional(),
+  healthProfessionalConsentSignature: z.string().optional(),
+
+  // Delivery Details (Screen 2)
   deliveryDate: z.coerce.date().optional(),
   deliveryTime: z.string().optional(),
+  referral: z.boolean().optional(),
+  referralInfo: z.string().optional(),
 
-  // AMTSL (Active Management of Third Stage of Labor)
-  amtsl: z.enum(["Ergomtrine", "Oxytocine", "Misoprostol"]).optional(),
+  // AMTSL (UI: Ergometrine, Oxytocin, Misoprostol)
+  amtsl: z.enum(["Ergometrine", "Oxytocin", "Misoprostol"]).optional(),
 
-  // Placenta
-  placenta: z.enum(["Completed", "Incomplete", "CCT", "MRP"]).optional(),
+  // Placenta (UI: Completed, Incomplete, CCT, NRP)
+  placenta: z.enum(["Completed", "Incomplete", "CCT", "MRP", "NRP"]).optional(),
 
   // Laceration
   laceration: z.enum(["1st Degree", "2nd Degree", "3rd Degree"]).optional(),
 
-  // Management
+  // Management (Screen 3)
   obstetricCxManaged: z.boolean().optional(),
   aphManaged: z.boolean().optional(),
   rupturedUx: z.boolean().optional(),
@@ -40,6 +46,10 @@ export const deliverySchema = z.object({
   pphManaged: z.boolean().optional(),
   promSepsisManaged: z.boolean().optional(),
   obstPrologLaborManaged: z.boolean().optional(),
+
+  // Delivery Assistance (Screen 4)
+  deliveryAssistanceMeasures: z.string().optional(),
+  deliveryAssistanceMore: z.string().optional(),
 
   // HIV Details
   hivCounsTestingOffered: z.string().optional(),
@@ -50,6 +60,6 @@ export const deliverySchema = z.object({
   feedingOptionEbf: z.string().optional(),
   rf: z.string().optional(),
 
-  // Newborns
+  // Newborns (Screens 5 & 6)
   newborns: z.array(newbornSchema).optional(),
 });

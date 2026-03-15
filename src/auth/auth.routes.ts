@@ -144,6 +144,29 @@ router.post("/refresh", AuthController.refresh);
 
 /**
  * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: Logout (revoke refresh token)
+ *     tags: [Authentication]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ */
+router.post("/logout", AuthController.logout);
+
+/**
+ * @swagger
  * /api/v1/auth/change-password:
  *   post:
  *     summary: Change password (authenticated user)

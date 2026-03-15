@@ -8,7 +8,8 @@ const router = Router();
  * @swagger
  * /api/v1/delivery:
  *   post:
- *     summary: Create delivery record with newborns
+ *     summary: Create delivery record (Delivery Summary Recording – full UI form)
+ *     description: Accepts the full Delivery Summary Recording form – consent, delivery details, referral, AMTSL, placenta, laceration, management conditions, delivery assistance, HIV section, and newborns array. recordedById is set from auth token.
  *     tags: [Delivery]
  *     security:
  *       - bearerAuth: []
@@ -27,15 +28,64 @@ const router = Router();
  *               pregnancyId:
  *                 type: string
  *                 format: uuid
+ *               clientConsentSignature:
+ *                 type: string
+ *                 description: Consent Form Delivery Client – Signature
+ *               healthProfessionalConsentSignature:
+ *                 type: string
+ *                 description: Consent Form Health Professional – Signature
  *               deliveryDate:
  *                 type: string
  *                 format: date-time
+ *               deliveryTime:
+ *                 type: string
+ *               referral:
+ *                 type: boolean
+ *                 description: Referral Yes/No
+ *               referralInfo:
+ *                 type: string
+ *                 description: Optional referral details
  *               amtsl:
  *                 type: string
- *                 enum: [Ergomtrine, Oxytocine, Misoprostol]
+ *                 enum: [Ergometrine, Oxytocin, Misoprostol]
  *               placenta:
  *                 type: string
- *                 enum: [Completed, Incomplete, CCT, MRP]
+ *                 enum: [Completed, Incomplete, CCT, MRP, NRP]
+ *               laceration:
+ *                 type: string
+ *                 enum: [1st Degree, 2nd Degree, 3rd Degree]
+ *               obstetricCxManaged:
+ *                 type: boolean
+ *               aphManaged:
+ *                 type: boolean
+ *               rupturedUx:
+ *                 type: boolean
+ *               eclampsiaManaged:
+ *                 type: boolean
+ *               pphManaged:
+ *                 type: boolean
+ *               promSepsisManaged:
+ *                 type: boolean
+ *               obstPrologLaborManaged:
+ *                 type: boolean
+ *               deliveryAssistanceMeasures:
+ *                 type: string
+ *               deliveryAssistanceMore:
+ *                 type: string
+ *               hivCounsTestingOffered:
+ *                 type: string
+ *               hivTestingAccepted:
+ *                 type: string
+ *               hivTestResult:
+ *                 type: string
+ *               arvpxForMothers:
+ *                 type: string
+ *               arvpxForNb:
+ *                 type: string
+ *               feedingOptionEbf:
+ *                 type: string
+ *               rf:
+ *                 type: string
  *               newborns:
  *                 type: array
  *                 items:
@@ -47,11 +97,31 @@ const router = Router();
  *                     sex:
  *                       type: string
  *                       enum: [Male, Female]
+ *                     termStatus:
+ *                       type: string
+ *                       enum: [Term, Preterm]
+ *                     alive:
+ *                       type: boolean
+ *                     apgarScore:
+ *                       type: integer
+ *                       minimum: 0
+ *                       maximum: 10
+ *                     sb:
+ *                       type: string
+ *                       enum: [Mac, Fresh]
  *                     birthWeightGm:
  *                       type: number
+ *                     lengthCm:
+ *                       type: number
+ *                     vitK:
+ *                       type: boolean
+ *                     ttc:
+ *                       type: boolean
+ *                     babyMotherBonding:
+ *                       type: boolean
  *     responses:
  *       201:
- *         description: Delivery record created successfully
+ *         description: Delivery record created successfully (Delivery Overview registered)
  */
 router.post("/", authenticate, DeliveryController.create);
 

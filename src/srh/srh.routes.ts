@@ -8,7 +8,8 @@ const router = Router();
  * @swagger
  * /api/v1/srh:
  *   post:
- *     summary: Create SRH registration record
+ *     summary: Create SRH registration (SRH Medical Registration – full UI form)
+ *     description: Accepts the full SRH Medical Registration form – consent, history (SRH service type + history), vital signs, physical examination, working diagnosis, laboratory, ultrasound request, treatment plan. recordedById set from auth token. Basic info (name, age, location, etc.) use POST /patient first.
  *     tags: [SRH]
  *     security:
  *       - bearerAuth: []
@@ -24,6 +25,13 @@ const router = Router();
  *               patientId:
  *                 type: string
  *                 format: uuid
+ *               clientConsentSignature:
+ *                 type: string
+ *               healthProfessionalConsentSignature:
+ *                 type: string
+ *               srhServiceType:
+ *                 type: string
+ *                 description: Family Planning, Routine Care, STI/HIV, Others
  *               history:
  *                 type: string
  *               temperature:
@@ -32,13 +40,37 @@ const router = Router();
  *                 type: number
  *               heightCm:
  *                 type: number
+ *               bmiIndex:
+ *                 type: number
+ *               bloodPressure:
+ *                 type: string
+ *               pulse:
+ *                 type: string
+ *               respiratoryRate:
+ *                 type: string
+ *               oxygenSaturation:
+ *                 type: string
+ *               physicalExamination:
+ *                 type: string
  *               workingDiagnosis:
+ *                 type: string
+ *               laboratoryResults:
+ *                 type: string
+ *               typeOfUltrasound:
+ *                 type: string
+ *               ultrasoundMore:
+ *                 type: string
+ *               smartUltrasoundRecommendation:
  *                 type: string
  *               treatmentPlan:
  *                 type: string
+ *               treatmentRx:
+ *                 type: string
+ *               continuationSheet:
+ *                 type: string
  *     responses:
  *       201:
- *         description: SRH registration created successfully
+ *         description: SRH case registered successfully
  */
 router.post("/", authenticate, SRHController.create);
 

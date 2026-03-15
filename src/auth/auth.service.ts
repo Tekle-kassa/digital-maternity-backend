@@ -185,6 +185,21 @@ export class AuthService {
     return { accessToken: newAccess, refreshToken: newRefresh };
   }
 
+  /** Logout: revoke the given refresh token so it can no longer be used. */
+  static async logout(input: { refreshToken: string; ip?: string }) {
+    const { refreshToken, ip } = input;
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+    const dbToken = await AuthRepository.findRefreshToken(tokenHash);
+    if (dbToken) {
+      await AuthRepository.revokeRefreshToken(tokenHash);
+      await log(dbToken.userId, "auth.logout", {}, ip ?? null);
+    }
+    return { message: "Logged out successfully" };
+  }
+
   static async forgotPassword(input: { phone: string; ip?: string }) {
     const { phone, ip } = input;
 

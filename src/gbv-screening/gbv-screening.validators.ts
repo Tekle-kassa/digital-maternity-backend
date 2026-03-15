@@ -2,10 +2,10 @@ import { z } from "zod";
 
 export const gbvScreeningSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
-  recordedById: z.string().min(1, "Recorded by ID is required"),
+  recordedById: z.string().min(1).optional(), // Set from auth if omitted
   gbvReportId: z.string().optional(),
 
-  // Consent
+  // Consent (Screen 1)
   survivorConsentSignature: z.string().optional(),
   caseWorkerConsentSignature: z.string().optional(),
 
@@ -31,8 +31,16 @@ export const gbvScreeningSchema = z.object({
   // Laboratory
   laboratoryResults: z.string().optional(),
 
+  // Test Results
+  pregnancyTestingResults: z.string().optional(),
+  hivTestingResults: z.string().optional(),
+  stiTestingResults: z.string().optional(),
+  postExposureProphylaxisTreatment: z.string().optional(),
+  emergencyContraceptiveProvision: z.string().optional(),
+
   // Ultrasound Request
   typeOfUltrasound: z.string().optional(),
+  ultrasoundMore: z.string().optional(),
   smartUltrasoundRecommendation: z.string().optional(),
 
   // Treatment Plan
