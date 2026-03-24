@@ -1,5 +1,14 @@
 import { User } from "../generated/prisma/client";
+import { Prisma } from "../generated/prisma/client";
 import prisma from "../config/prisma";
+
+const rolesInclude = {
+  roles: {
+    include: {
+      role: true,
+    },
+  },
+} as const;
 
 export class AuthRepository {
   static async createUser(data: {
@@ -11,30 +20,39 @@ export class AuthRepository {
       data,
     });
   }
+
   static async findUserByPhone(phone: string) {
     return prisma.user.findUnique({
       where: { phone },
-      include: {
-        roles: {
-          include: {
-            role: true,
-          },
-        },
-      },
+      include: rolesInclude,
     });
   }
+
+  /**
+   * Email lookup: uses raw SQL so login-by-email works even when the checked-in
+   * Prisma client is stale (run `npx prisma generate` after fixing permissions on
+   * `src/generated/prisma` so `findUnique({ where: { email } })` and `include: { clinic }` work).
+   */
+  static async findUserByEmail(email: string) {
+    const norm = email.trim().toLowerCase();
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT id FROM "User" WHERE LOWER(email) = ${norm} LIMIT 1`
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return prisma.user.findUnique({
+      where: { id: row.id },
+      include: rolesInclude,
+    });
+  }
+
   static async findUserById(id: string) {
     return prisma.user.findUnique({
       where: { id },
-      include: {
-        roles: {
-          include: {
-            role: true,
-          },
-        },
-      },
+      include: rolesInclude,
     });
   }
+
   static async saveRefreshToken(
     userId: string,
     tokenHash: string,
@@ -57,6 +75,7 @@ export class AuthRepository {
       where: { tokenHash, revoked: false },
     });
   }
+
   static async updateUser(userId: string, data: Partial<User>) {
     return prisma.user.update({
       where: { id: userId },
@@ -69,7 +88,6 @@ export class AuthRepository {
     code: string,
     expiresAt: Date
   ) {
-    // Invalidate any existing unused OTPs for this user
     await prisma.passwordResetOTP.updateMany({
       where: { userId, used: false },
       data: { used: true },

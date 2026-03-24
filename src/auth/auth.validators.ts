@@ -12,10 +12,15 @@ export const registerSchema = z.object({
   // role: roleEnum,
 });
 
-export const loginSchema = z.object({
-  phone: z.string(),
-  password: z.string().min(4, "password must be at least 4 characters"),
-});
+export const loginSchema = z
+  .object({
+    phone: z.string().optional(),
+    email: z.string().email().optional(),
+    password: z.string().min(4, "password must be at least 4 characters"),
+  })
+  .refine((d) => d.phone || d.email, {
+    message: "phone or email is required",
+  });
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),

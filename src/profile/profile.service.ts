@@ -7,7 +7,7 @@ export class ProfileService {
   static async getProfile(userId: string) {
     const user = await AuthRepository.findUserById(userId);
     if (!user) throw new AppError("User not found", 404);
-    const roles = user.roles.map((r) => r.role.name);
+    const roles = (user as any).roles.map((r: any) => r.role.name);
     return {
       id: user.id,
       fullName: user.fullName,

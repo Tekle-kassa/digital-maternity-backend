@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { AnalyticsController } from "./analytics.controller";
 import { authenticate, authorizeRoles } from "../middleware/authMiddleware";
+import analyticsRefRouter from "../v1/analytics-ref.router";
 
 const ALLOWED = ["MIDWIFE", "DOCTOR", "SUPERVISOR", "ADMIN"];
 
@@ -141,5 +142,8 @@ router.get(
   authorizeRoles(...ALLOWED),
   AnalyticsController.getHighRiskPatients
 );
+
+/** UNFPA DMP analytics (overview, dashboard-stats, visits-by-month, …) — API-REFERENCE.md */
+router.use("/", analyticsRefRouter);
 
 export default router;

@@ -43,10 +43,16 @@ export class AuthService {
     await log(user.id, "auth.register", { phone }, ip ?? null);
     return user;
   }
-  static async login(input: { phone: string; password: string; ip?: string }) {
-    // const user = await prisma.user.findUnique({ where: { username } });
-    const { phone, password, ip } = input;
-    const user = await AuthRepository.findUserByPhone(phone);
+  static async login(input: {
+    phone?: string;
+    email?: string;
+    password: string;
+    ip?: string;
+  }) {
+    const { phone, email, password, ip } = input;
+    const user = email
+      ? await AuthRepository.findUserByEmail(email)
+      : await AuthRepository.findUserByPhone(phone!);
 
     if (!user) throw new AppError("Invalid credentials", 401);
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -54,7 +60,7 @@ export class AuthService {
     if (user.mustChangePassword) {
       throw new AppError("You must change your password first", 401);
     }
-    const roles = user.roles.map((r) => r.role.name);
+    const roles = (user as any).roles.map((r: any) => r.role.name);
     const accessToken = this.signAccessToken({ uid: user.id, roles });
 
     const refreshToken = this.signRefreshToken({ uid: user.id });
@@ -157,7 +163,7 @@ export class AuthService {
     const user = await AuthRepository.findUserById(payload.uid);
     if (!user) throw new AppError("User not found", 404);
 
-    const roles = user.roles.map((r) => r.role.name);
+    const roles = (user as any).roles.map((r: any) => r.role.name);
 
     const newAccess = this.signAccessToken({
       uid: user.id,

@@ -7,14 +7,18 @@ const options: swaggerJsdoc.Options = {
       title: "Digital Maternity Backend API",
       version: "1.0.0",
       description:
-        "Comprehensive API documentation for Digital Maternity Backend - A system for managing maternal health records, ANC visits, deliveries, PNC visits, GBV screening, and SRH registrations.",
+        "UNFPA Digital Maternity Package (DMP) — REST API per `API-REFERENCE.md` + legacy modules (ANC register-client, delivery, PNC, etc.).\n\n" +
+        "**Base path:** `/api/v1`\n\n" +
+        "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
+        "**Legacy aliases:** `/patient` (includes `POST /register-client` + DMP patient routes), `/visit`, `/ultrasound`, `/analytics` (merged legacy + DMP analytics).\n\n" +
+        '**Seeding:** `POST /api/v1/admin/seed` with `X-Seed-Secret` (if `SEED_SECRET` is set) or ADMIN JWT. Body: `{ "scope": "roles" | "demo" | "all" }`.',
       contact: {
         name: "API Support",
       },
     },
     servers: [
       {
-        url: "http://localhost:3000",
+        url: "http://localhost:4008",
         description: "Development server",
       },
       {
@@ -86,6 +90,41 @@ const options: swaggerJsdoc.Options = {
             createdAt: { type: "string", format: "date-time" },
           },
         },
+        DmpListResponse: {
+          type: "object",
+          description: "Standard DMP list envelope (API-REFERENCE.md)",
+          properties: {
+            data: { type: "array", items: {} },
+            meta: {
+              type: "object",
+              properties: {
+                page: { type: "integer" },
+                limit: { type: "integer" },
+                total: { type: "integer" },
+                totalPages: { type: "integer" },
+              },
+            },
+          },
+        },
+        DmpDataResponse: {
+          type: "object",
+          properties: {
+            data: {},
+          },
+        },
+        DmpError: {
+          type: "object",
+          properties: {
+            error: {
+              type: "object",
+              properties: {
+                code: { type: "string" },
+                message: { type: "string" },
+                details: { type: "object", additionalProperties: true },
+              },
+            },
+          },
+        },
       },
     },
     security: [
@@ -96,10 +135,11 @@ const options: swaggerJsdoc.Options = {
   },
   apis: [
     "./src/**/*.routes.ts",
+    "./src/**/*.router.ts",
     "./src/**/*.controller.ts",
     "./src/docs/swagger-docs.ts",
+    "./src/docs/openapi-dmp.ts",
   ],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);
-

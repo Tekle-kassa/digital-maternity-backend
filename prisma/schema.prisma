@@ -19,14 +19,128 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- DMP API (API-REFERENCE.md / database-schema.sql) ---
+
+enum ApiClinicType {
+  fixed
+  mobile
+}
+
+enum ApiClinicStatus {
+  active
+  inactive
+}
+
+enum ApiAppointmentType {
+  prenatal_checkup
+  ultrasound
+  lab_test
+  follow_up
+  teleconsult
+}
+
+enum ApiAppointmentStatus {
+  scheduled
+  confirmed
+  in_progress
+  completed
+  missed
+  cancelled
+}
+
+enum ApiConsultPriority {
+  routine
+  urgent
+  emergency
+}
+
+enum ApiAlertType {
+  appointment
+  risk
+  teleconsult
+  sync
+  system
+  gbv
+}
+
+enum ApiAlertPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum ApiConsultationType {
+  general
+  high_risk
+  ultrasound_review
+  gbv
+  complication
+}
+
+enum ApiConsultStatus {
+  pending
+  assigned
+  in_review
+  responded
+  closed
+}
+
+enum DmpEntitySyncStatus {
+  synced
+  pending
+  conflict
+}
+
+enum SyncQueueAction {
+  create
+  update
+  delete
+}
+
+enum SyncQueueStatus {
+  pending
+  uploading
+  downloading
+  completed
+  failed
+}
+
+enum UploadFileCategory {
+  ultrasound
+  attachment
+  avatar
+  document
+}
+
+model Clinic {
+  id           String          @id @default(uuid())
+  name         String
+  location     String
+  region       String
+  zone         String
+  woreda       String
+  type         ApiClinicType
+  status       ApiClinicStatus @default(active)
+  patientCount Int             @default(0)
+  lastSync     DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  users        User[]
+  appointments Appointment[]
+}
+
 model User {
   id                 String             @id @default(uuid())
   passwordHash       String
   phone              String             @unique
+  email              String?            @unique
   fullName           String?
   displayId          String?            // Display ID for profile (e.g. 10000100)
   profileImageUrl    String?            // Avatar / profile picture URL
   preferredLanguage  String?            // e.g. EN, SO (Language enum)
+  clinicId           String?
+  clinic             Clinic?            @relation(fields: [clinicId], references: [id])
   roles              UserRole[]
   isActive           Boolean            @default(true)
   mustChangePassword Boolean            @default(true)
@@ -51,6 +165,15 @@ model User {
   conversationsAsUser2 Conversation[] @relation("User2Conversations")
   messagesSent        Message[]       @relation("MessagesSent")
   messagesReceived    Message[]       @relation("MessagesReceived")
+  alertsForUser       UserAlert[]     @relation("AlertTargetUser")
+  alertsAcknowledged  UserAlert[]     @relation("AlertAcknowledgedBy")
+  appointmentsAsMidwife Appointment[]   @relation("AppointmentMidwife")
+  tcRequested         TeleconsultRequest[] @relation("TcRequestedBy")
+  tcAssigned          TeleconsultRequest[] @relation("TcAssigned")
+  teleconsultResponses TeleconsultResponse[]
+  uploadedFiles       UploadedFile[]
+  notificationPreference NotificationPreference?
+  userSessions        UserSession[]
 }
 
 model Role {
@@ -162,6 +285,10 @@ model Patient {
   pncVisits        PNCVisit[]
   gbvScreenings    GBVScreening[]
   srhRegistrations SRHRegistration[]
+  appointments     Appointment[]
+  userAlerts       UserAlert[]
+  teleconsults     TeleconsultRequest[]
+  syncConflicts    SyncConflict[]
 }
 
 // model PatientDemographics {
@@ -697,4 +824,202 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([recipientId, readAt])
+}
+
+model Appointment {
+  id                   String              @id @default(uuid())
+  patientId            String
+  patient              Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type                 ApiAppointmentType
+  visitNumber          Int?
+  gestationalAgeWeeks  Int?
+  gestationalAgeDays   Int?
+  scheduledDate        DateTime
+  scheduledTime        String
+  clinicId             String
+  clinic               Clinic              @relation(fields: [clinicId], references: [id])
+  midwifeId            String
+  midwife              User                @relation("AppointmentMidwife", fields: [midwifeId], references: [id])
+  priority             ApiConsultPriority  @default(routine)
+  status               ApiAppointmentStatus @default(scheduled)
+  notes                String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([patientId])
+  @@index([clinicId])
+  @@index([scheduledDate])
+}
+
+model UserAlert {
+  id                 String           @id @default(uuid())
+  type               ApiAlertType
+  priority           ApiAlertPriority
+  title              String
+  message            String
+  patientId          String?
+  patient            Patient?         @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  targetUserId       String
+  targetUser         User             @relation("AlertTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  readAt             DateTime?
+  acknowledgedAt     DateTime?
+  acknowledgedById   String?
+  acknowledgedBy     User?            @relation("AlertAcknowledgedBy", fields: [acknowledgedById], references: [id])
+  actionRequired     Boolean          @default(false)
+  actionUrl          String?
+  createdAt          DateTime         @default(now())
+
+  @@index([targetUserId])
+  @@index([patientId])
+}
+
+model TeleconsultRequest {
+  id                     String               @id @default(uuid())
+  patientId              String
+  patient                Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  requestedById          String
+  requestedBy            User                 @relation("TcRequestedBy", fields: [requestedById], references: [id])
+  requestDate            DateTime             @default(now())
+  priority               ApiConsultPriority
+  consultationType       ApiConsultationType
+  chiefComplaint         String
+  clinicalNotes          String               @default("")
+  assignedSpecialistId     String?
+  assignedSpecialist     User?                @relation("TcAssigned", fields: [assignedSpecialistId], references: [id])
+  status                 ApiConsultStatus     @default(pending)
+  syncStatus             DmpEntitySyncStatus  @default(pending)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  response               TeleconsultResponse?
+  attachments            TeleconsultAttachment[]
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model TeleconsultAttachment {
+  id             String               @id @default(uuid())
+  teleconsultId  String
+  teleconsult    TeleconsultRequest   @relation(fields: [teleconsultId], references: [id], onDelete: Cascade)
+  type           String
+  fileUrl        String
+  fileName       String
+  createdAt      DateTime             @default(now())
+}
+
+model TeleconsultResponse {
+  id                     String               @id @default(uuid())
+  teleconsultId          String               @unique
+  teleconsult            TeleconsultRequest   @relation(fields: [teleconsultId], references: [id], onDelete: Cascade)
+  respondedById          String
+  respondedBy            User                 @relation(fields: [respondedById], references: [id])
+  respondedAt            DateTime             @default(now())
+  diagnosis              String?
+  recommendations        String
+  followUpInstructions   String
+  prescriptions          String[]             @default([])
+}
+
+model RiskRule {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  condition   String
+  weight      Int
+  version     String   @default("1.0")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UploadedFile {
+  id           String       @id @default(uuid())
+  filename     String
+  url          String
+  thumbnailUrl String?
+  size         BigInt
+  mimeType     String
+  category     UploadFileCategory
+  uploadedById String
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([uploadedById])
+}
+
+model NotificationPreference {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailAlerts       Boolean  @default(true)
+  smsAlerts         Boolean  @default(false)
+  criticalOnly      Boolean  @default(false)
+  alertAppointment  Boolean  @default(true)
+  alertRisk         Boolean  @default(true)
+  alertTeleconsult  Boolean  @default(true)
+  alertSync         Boolean  @default(true)
+  alertSystem       Boolean  @default(true)
+  alertGbv          Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+}
+
+model UserSession {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device      String?
+  ipAddress   String?
+  lastActive  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SyncQueueItem {
+  id            String           @id @default(uuid())
+  entityType    String
+  entityId      String
+  action        SyncQueueAction
+  status        SyncQueueStatus  @default(pending)
+  payload       Json?
+  progress      Int?
+  errorMessage  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([status])
+}
+
+/** Idempotent store for mutations received from a local facility server (Option B: local hub → central). */
+model IngestedSyncMutation {
+  id                String   @id @default(uuid())
+  facilityId        String
+  sourceQueueItemId String
+  entityType        String
+  entityId          String
+  action            String
+  payload           Json?
+  createdAt         DateTime @default(now())
+
+  @@unique([facilityId, sourceQueueItemId])
+  @@index([facilityId])
+  @@index([entityType, entityId])
+}
+
+model SyncConflict {
+  id               String   @id @default(uuid())
+  patientId        String
+  patient          Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  field            String
+  localValue       String
+  serverValue      String
+  localTimestamp   DateTime
+  serverTimestamp  DateTime
+  resolved         Boolean  @default(false)
+  resolution       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([patientId])
+  @@index([resolved])
 }

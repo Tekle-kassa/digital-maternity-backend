@@ -16,6 +16,8 @@ import srhRoutes from "./srh/srh.routes";
 import analyticsRoutes from "./analytics/analytics.routes";
 import messagesRoutes from "./messages/messages.routes";
 import profileRoutes from "./profile/profile.routes";
+import v1ReferenceRoutes from "./v1";
+import adminRoutes from "./seed/seed.routes";
 import { swaggerSpec } from "./config/swagger";
 import prisma from "./config/prisma";
 dotenv.config();
@@ -44,6 +46,8 @@ app.use("/api/v1/srh", srhRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/messages", messagesRoutes);
 app.use("/api/v1/profile", profileRoutes);
+app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1", v1ReferenceRoutes);
 app.use(globalErrorHandler);
 
 const PORT = process.env.PORT || 3000;

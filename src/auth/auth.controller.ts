@@ -1,5 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthService } from "./auth.service";
+import { AuthRequest } from "../middleware/authMiddleware";
+import { mapUserToApiResponse } from "../v1/mappers";
+import { parseExpiresInSeconds } from "../v1/helpers";
+import config from "../config";
 import {
   changePasswordSchema,
   firstTimeChangePasswordSchema,
@@ -30,9 +34,28 @@ export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = loginSchema.parse(req.body);
-      const { phone, password } = parsed;
-      const data = await AuthService.login({ password, phone, ip: req.ip });
-      res.status(200).json({ success: true, ...data });
+      const { phone, email, password } = parsed;
+      const data = await AuthService.login({
+        password,
+        phone,
+        email,
+        ip: req.ip,
+      });
+      const user = mapUserToApiResponse(data.user as any);
+      const expiresIn = parseExpiresInSeconds(config.jwt.accessExpiresIn);
+      res.status(200).json({
+        success: true,
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        expiresIn,
+        user,
+        data: {
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          expiresIn,
+          user,
+        },
+      });
     } catch (err) {
       next(err);
     }
@@ -72,7 +95,7 @@ export class AuthController {
     try {
       const parsed = changePasswordSchema.parse(req.body);
       const { currentPassword, newPassword } = parsed;
-      const userId = (req as any).user!.userId;
+      const userId = (req as AuthRequest).user!.id;
       const data = await AuthService.changePassword({
         userId,
         currentPassword,
