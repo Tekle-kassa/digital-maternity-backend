@@ -4,7 +4,8 @@ import { authenticate, authorizeRoles, AuthRequest } from "../middleware/authMid
 import { sendData, sendError, parsePagination, meta } from "./helpers";
 import { mapUltrasoundToApi } from "./mappers";
 import { UltrasoundService } from "../ultrsound/ultrasound.service";
-import { ultrasoundUpload } from "../common/multerS3";
+import { memoryUpload } from "../common/multerMemory";
+import { isCloudinaryConfigured, uploadUltrasoundImage } from "../common/cloudinaryUpload";
 import { z } from "zod";
 
 const router = Router();
@@ -132,11 +133,19 @@ router.post(
   "/",
   authenticate,
   authorizeRoles("MIDWIFE", "NURSE", "DOCTOR"),
-  ultrasoundUpload.single("image"),
+  memoryUpload.single("image"),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
+      if (!isCloudinaryConfigured()) {
+        return sendError(
+          res,
+          "NOT_CONFIGURED",
+          "Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.",
+          503
+        );
+      }
       const file = (req as AuthRequest & { file?: Express.Multer.File }).file;
-      if (!file) return sendError(res, "VALIDATION_ERROR", "image file required", 400);
+      if (!file?.buffer) return sendError(res, "VALIDATION_ERROR", "image file required", 400);
       const body = z
         .object({
           patientId: z.string().uuid(),
@@ -149,7 +158,7 @@ router.post(
           ...req.body,
           gestationalAge: req.body.gestationalAge,
         });
-      const imageUrl = (file as Express.Multer.File & { location?: string }).location ?? "";
+      const imageUrl = await uploadUltrasoundImage(file.buffer, file.mimetype);
       const ga = body.gestationalAge ? parseInt(String(body.gestationalAge), 10) : undefined;
       const created = await UltrasoundService.createUltrasound({
         patientId: body.patientId,
