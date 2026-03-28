@@ -1,9 +1,38 @@
 import { Request, Response, NextFunction } from "express";
 import { PatientService } from "./pateint.service";
 import { AuthRequest } from "../middleware/authMiddleware";
-import { patientSchema, registerClientSchema } from "./patient.validators";
+import {
+  ancBasicInformationSchema,
+  patientSchema,
+  registerClientSchema,
+} from "./patient.validators";
 
 export class PatientController {
+  /** ANC Medical Recording — Basic Information only (patient demographics, no ANC row). */
+  static async createAncBasicInformation(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const parsed = ancBasicInformationSchema.parse(req.body);
+      const user = req.user!;
+      const patient = await PatientService.createFromAncBasicInformation(
+        parsed,
+        user.id
+      );
+      res.status(201).json({
+        success: true,
+        message:
+          "Basic information saved. Continue with the next ANC screen (e.g. consent, then ANC record).",
+        patient,
+        patientId: patient.id,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /** Full Register Client flow (all UI form steps in one request). */
   static async registerClient(
     req: AuthRequest,

@@ -1,6 +1,26 @@
 import { z } from "zod";
 import { ancRecordSchema } from "../anc/anc.validators";
 
+/**
+ * ANC Medical Recording — screen "Basic Information" only (demographics).
+ * Does not create an ANC record; use follow-up endpoints for later UI steps.
+ */
+export const ancBasicInformationSchema = z.object({
+  fullName: z.string().min(1, "Name is required"),
+  age: z.coerce.number().int().positive().max(120).optional(),
+  facility: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  subCity: z.string().optional(),
+  woreda: z.string().optional(),
+  kebele: z.string().optional(),
+  houseNo: z.string().optional(),
+  phone: z.string().optional(),
+  emergencyContact: z.string().optional(),
+  emergencyPhone: z.string().optional(),
+});
+
+export type AncBasicInformationPayload = z.infer<typeof ancBasicInformationSchema>;
+
 export const patientSchema = z.object({
   fullName: z.string().min(3),
   cardNo: z.string().optional(),

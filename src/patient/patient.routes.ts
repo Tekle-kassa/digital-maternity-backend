@@ -9,6 +9,47 @@ const router = Router();
 
 /**
  * @swagger
+ * /api/v1/patient/anc/basic-information:
+ *   post:
+ *     summary: ANC flow — Step 1 (Basic Information only)
+ *     description: Creates a Patient with demographics from the Basic Information screen only. Does not create an ANC record. Card number is generated server-side (returned on the patient object).
+ *     tags: [Patients]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [fullName]
+ *             properties:
+ *               fullName: { type: string, example: "Hawot Gebre" }
+ *               age: { type: integer, example: 26 }
+ *               facility: { type: string }
+ *               maritalStatus: { type: string }
+ *               subCity: { type: string }
+ *               woreda: { type: string }
+ *               kebele: { type: string }
+ *               houseNo: { type: string }
+ *               phone: { type: string, description: "Optional; duplicate phone rejected if set" }
+ *               emergencyContact: { type: string }
+ *               emergencyPhone: { type: string }
+ *     responses:
+ *       201:
+ *         description: Patient created; use patientId for next steps
+ *       400:
+ *         description: Validation or duplicate phone
+ */
+router.post(
+  "/anc/basic-information",
+  authenticate,
+  authorizeRoles(...ALLOWED),
+  PatientController.createAncBasicInformation
+);
+
+/**
+ * @swagger
  * /api/v1/patient/register-client:
  *   post:
  *     summary: Register client — full ANC form (legacy UI)

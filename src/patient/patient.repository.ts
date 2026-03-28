@@ -30,6 +30,10 @@ export class PatientRepository {
   static async findByPhone(phone: string) {
     return prisma.patient.findFirst({ where: { phone } });
   }
+
+  static async findByCardNo(cardNo: string) {
+    return prisma.patient.findFirst({ where: { cardNo } });
+  }
   static async findAll() {
     return prisma.patient.findMany({
       orderBy: { createdAt: "desc" },

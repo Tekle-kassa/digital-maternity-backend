@@ -1,7 +1,11 @@
+import crypto from "crypto";
 import { AppError } from "../utils/AppError";
 import { CreatePatientDTO, PatientRepository } from "./patient.repository";
 import prisma from "../config/prisma";
-import type { RegisterClientPayload } from "./patient.validators";
+import type {
+  AncBasicInformationPayload,
+  RegisterClientPayload,
+} from "./patient.validators";
 
 const PATIENT_KEYS = [
   "fullName",
@@ -42,7 +46,49 @@ function omit<T extends Record<string, unknown>, K extends string>(
   ) as Omit<T, K>;
 }
 
+/** 8-digit card number for ANC basic-information flow (server-generated, not from UI). */
+async function allocateUniqueCardNo(): Promise<string> {
+  for (let i = 0; i < 8; i++) {
+    const cardNo = String(crypto.randomInt(10_000_000, 100_000_000));
+    const taken = await PatientRepository.findByCardNo(cardNo);
+    if (!taken) return cardNo;
+  }
+  throw new AppError("Could not allocate a unique card number", 503);
+}
+
 export class PatientService {
+  /**
+   * ANC flow step 1: persist only patient demographics (matches Basic Information UI).
+   */
+  static async createFromAncBasicInformation(
+    payload: AncBasicInformationPayload,
+    userId: string
+  ) {
+    const phone = payload.phone?.trim() || undefined;
+    if (phone) {
+      const exists = await PatientRepository.findByPhone(phone);
+      if (exists)
+        throw new AppError("Patient with this phone already exists", 400);
+    }
+    const cardNo = await allocateUniqueCardNo();
+    const dto: CreatePatientDTO = {
+      fullName: payload.fullName.trim(),
+      age: payload.age,
+      cardNo,
+      facility: payload.facility,
+      maritalStatus: payload.maritalStatus,
+      subCity: payload.subCity,
+      woreda: payload.woreda,
+      kebele: payload.kebele,
+      houseNo: payload.houseNo,
+      phone,
+      emergencyContact: payload.emergencyContact,
+      emergencyPhone: payload.emergencyPhone,
+      createdById: userId,
+    };
+    return this.createPatient(dto);
+  }
+
   static async registerClient(payload: RegisterClientPayload, userId: string) {
     if (payload.phone) {
       const exists = await PatientRepository.findByPhone(payload.phone);
