@@ -10,6 +10,7 @@ export class ANCController {
       const record = await ANCService.createANCRecord(parsed);
       res.status(201).json({
         success: true,
+        message: "ANC Case have been registered successfully.",
         record,
       });
     } catch (error) {

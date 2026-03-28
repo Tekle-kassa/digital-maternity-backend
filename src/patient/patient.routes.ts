@@ -12,7 +12,7 @@ const router = Router();
  * /api/v1/patient/anc/basic-information:
  *   post:
  *     summary: ANC flow — Step 1 (Basic Information only)
- *     description: Creates a Patient with demographics from the Basic Information screen only. Does not create an ANC record. Card number is generated server-side (returned on the patient object).
+ *     description: Creates a Patient with demographics from the Basic Information screen only. Does not create an ANC record. Card number is generated server-side (returned on the patient object). Next step — send `patientId` to `POST /api/v1/anc` with the ANC Medical Recording clinical fields.
  *     tags: [Patients]
  *     security:
  *       - bearerAuth: []

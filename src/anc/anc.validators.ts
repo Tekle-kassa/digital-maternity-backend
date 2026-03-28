@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/** UI: Supplement screen — TD1 … TD5 */
+export const ancTdSchema = z.enum(["TD1", "TD2", "TD3", "TD4", "TD5"]);
+
+/** UI: HIV test result — Reactive / Non-reactive / Indeterminate */
+export const ancHivResultSchema = z.enum(["R", "NR", "I"]);
+
 // Past obstetric history entry (UI: Year, GA, Mode of Delivery, Sex, Birth Weight kg)
 export const pastObstetricEntrySchema = z.object({
   year: z.string().optional(),
@@ -9,24 +15,31 @@ export const pastObstetricEntrySchema = z.object({
   birthWeightKg: z.union([z.number(), z.string()]).optional(),
 });
 
+/**
+ * ANC Medical Recording (Register Client) — clinical steps only.
+ * Call after `POST /patient/anc/basic-information`; send `patientId` from that response.
+ * All sections optional except patientId; map each UI screen to the grouped fields below.
+ */
 export const ancRecordSchema = z.object({
   patientId: z.string().min(1, "Patient ID is required"),
-  // Consent (Register Client - Screen 1)
+
+  // Consent (first ANC screens if collected with clinical bundle)
   clientConsentSignature: z.string().optional(),
   healthProfessionalConsentSignature: z.string().optional(),
-  // Basic Information (cont'd)
+
+  // Screen: Basic Information (cont'd) — LMP, EDD, obstetric counts
   lmp: z.coerce.date().optional(),
   edd: z.coerce.date().optional(),
-  gravida: z.number().int().positive().optional(),
-  para: z.number().int().nonnegative().optional(),
-  abortion: z.number().int().nonnegative().optional(),
-  ectopicPreg: z.number().int().nonnegative().optional(),
-  childrenAlive: z.number().int().nonnegative().optional(),
+  gravida: z.coerce.number().int().nonnegative().optional(),
+  para: z.coerce.number().int().nonnegative().optional(),
+  abortion: z.coerce.number().int().nonnegative().optional(),
+  ectopicPreg: z.coerce.number().int().nonnegative().optional(),
+  childrenAlive: z.coerce.number().int().nonnegative().optional(),
 
-  // Past Obstetric History (array of entries)
+  // Screen: Past Obstetric History
   pastObstetricHistory: z.array(pastObstetricEntrySchema).optional(),
 
-  // General Medical History
+  // Screen: General Medical History (Yes/No + optional more info)
   diabetesMellitus: z.boolean().optional(),
   diabetesMellitusMoreInfo: z.string().optional(),
   cardiacDisease: z.boolean().optional(),
@@ -36,7 +49,7 @@ export const ancRecordSchema = z.object({
   otherMedicalCondition: z.boolean().optional(),
   otherMedicalConditionText: z.string().optional(),
 
-  // Lab Tests
+  // Screen: Lab Tests
   vdrl: z.string().optional(),
   hiv: z.string().optional(),
   hbsAg: z.string().optional(),
@@ -45,10 +58,10 @@ export const ancRecordSchema = z.object({
   bloodGroupRh: z.string().optional(),
   ua: z.string().optional(),
 
-  // Supplement
-  td: z.string().optional(),
+  // Screen: Supplement (TD1–TD5); union allows legacy free-text from register-client
+  td: z.union([ancTdSchema, z.string()]).optional(),
 
-  // Initial Evaluation: General Exam
+  // Screen: Initial Evaluation — General Exam
   generalExamGeneral: z.string().optional(),
   generalExamPallor: z.string().optional(),
   jaundice: z.boolean().optional(),
@@ -57,33 +70,33 @@ export const ancRecordSchema = z.object({
   heartAbnormality: z.boolean().optional(),
   heartAbnormalityMoreInfo: z.string().optional(),
 
-  // Initial Evaluation: Gyn Exam
+  // Screen: Initial Evaluation — Gyn Exam
   vulvarUlcer: z.boolean().optional(),
   vaginalDischarge: z.boolean().optional(),
   pelvicMass: z.boolean().optional(),
   cervicalLesion: z.boolean().optional(),
-  uterineSizeWks: z.number().int().positive().optional(),
+  uterineSizeWks: z.coerce.number().int().positive().optional(),
 
-  // Counseling/Testing
+  // Screen: Counseling / Testing
   dangerSignsAdvised: z.boolean().optional(),
   birthPreparednessAdvised: z.boolean().optional(),
   motherHivTestAccepted: z.boolean().optional(),
-  hivTestResult: z.string().optional(),
+  hivTestResult: z.union([ancHivResultSchema, z.string()]).optional(),
 
-  // HIV + Care & Follow-up
+  // Screen: HIV + Care & Follow-up
   hivTestResultReceived: z.boolean().optional(),
   counseledInfantFeeding: z.boolean().optional(),
   referredForCare: z.boolean().optional(),
-  partnerHivTestResult: z.string().optional(),
+  partnerHivTestResult: z.union([ancHivResultSchema, z.string()]).optional(),
 
-  // Present Pregnancy: Follow up
+  // Screens: Present Pregnancy — Follow-up (parts 1–3)
   gaLmp: z.string().optional(),
   complaints: z.string().optional(),
   bloodPressure: z.string().optional(),
-  weightKg: z.number().positive().optional(),
+  weightKg: z.coerce.number().positive().optional(),
   pallor: z.string().optional(),
   hemoglobin: z.string().optional(),
-  uterineHeightWks: z.number().int().positive().optional(),
+  uterineHeightWks: z.coerce.number().int().positive().optional(),
   presentation: z.string().optional(),
   descent: z.string().optional(),
   fetalHeartRate: z.string().optional(),
