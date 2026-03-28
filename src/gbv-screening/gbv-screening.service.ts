@@ -1,3 +1,5 @@
+import { createLinkedCaseVisit } from "../common/caseVisit";
+import prisma from "../config/prisma";
 import { AppError } from "../utils/AppError";
 import {
   CreateGBVScreeningDTO,
@@ -6,8 +8,6 @@ import {
 
 export class GBVScreeningService {
   static async createGBVScreening(dto: CreateGBVScreeningDTO) {
-    // Verify patient exists
-    const { default: prisma } = await import("../config/prisma");
     const patientExists = await prisma.patient.findUnique({
       where: { id: dto.patientId },
     });
@@ -15,7 +15,6 @@ export class GBVScreeningService {
       throw new AppError("Patient not found", 404);
     }
 
-    // Verify GBV report exists if provided
     if (dto.gbvReportId) {
       const gbvReportExists = await prisma.gBVReport.findUnique({
         where: { id: dto.gbvReportId },
@@ -25,13 +24,24 @@ export class GBVScreeningService {
       }
     }
 
-    // Calculate BMI if weight and height are provided
     if (dto.weightKg && dto.heightCm && !dto.bmiIndex) {
       const heightInMeters = dto.heightCm / 100;
       dto.bmiIndex = dto.weightKg / (heightInMeters * heightInMeters);
     }
 
-    return await GBVScreeningRepository.create(dto);
+    return await prisma.$transaction(async (tx) => {
+      const screening = await GBVScreeningRepository.createInTransaction(
+        tx,
+        dto
+      );
+      await createLinkedCaseVisit(tx, {
+        patientId: dto.patientId,
+        recordedById: dto.recordedById,
+        visitDate: screening.createdAt,
+        link: { category: "GBV_SCREENING", gbvScreeningId: screening.id },
+      });
+      return screening;
+    });
   }
 
   static async getGBVScreening(id: string) {

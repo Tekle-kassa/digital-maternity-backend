@@ -323,6 +323,18 @@ model Visit {
   // riskScore         RiskScore
   pregnancy      Pregnancy? @relation(fields: [pregnancyId], references: [id])
 
+  /** Clinical program this encounter belongs to (for patient timelines). */
+  visitCaseCategory VisitCaseCategory @default(GENERAL)
+
+  ancRecordId    String? @unique
+  ancRecord      ANCRecord?    @relation("VisitToANCRecord", fields: [ancRecordId], references: [id], onDelete: SetNull)
+  pncVisitId     String? @unique
+  pncVisit       PNCVisit?     @relation("VisitToPNCVisit", fields: [pncVisitId], references: [id], onDelete: SetNull)
+  gbvReportId    String? @unique
+  gbvReport      GBVReport?    @relation("VisitToGBVReport", fields: [gbvReportId], references: [id], onDelete: SetNull)
+  gbvScreeningId String? @unique
+  gbvScreening   GBVScreening? @relation("VisitToGBVScreening", fields: [gbvScreeningId], references: [id], onDelete: SetNull)
+
   patient         Patient      @relation(fields: [patientId], references: [id])
   recordedBy      User         @relation("UserRecordedANC", fields: [recordedById], references: [id])
   ultrasoundScans Ultrasound[]
@@ -332,6 +344,15 @@ enum RiskScore {
   Low
   Medium
   High
+}
+
+/** Flags how this visit row was created — links to ANC / PNC / GBV case for timelines. */
+enum VisitCaseCategory {
+  GENERAL
+  ANC
+  PNC
+  GBV_REPORT
+  GBV_SCREENING
 }
 
 model Ultrasound {
@@ -369,12 +390,15 @@ model GBVReport {
   recordedById                String
   recordedBy                  User           @relation(fields: [recordedById], references: [id])
   gbvScreenings               GBVScreening[]
+  registrationVisit           Visit?         @relation("VisitToGBVReport")
 }
 
 model GBVScreening {
   id           String @id @default(uuid())
   patientId    String
   recordedById String
+
+  registrationVisit Visit? @relation("VisitToGBVScreening")
 
   // Consent
   survivorConsentSignature   String? // Survivor signature
@@ -651,6 +675,8 @@ model ANCRecord {
   dangerSignsIdentified   String?
   actionAdviceCounselling String?
 
+  registrationVisit Visit? @relation("VisitToANCRecord")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -784,6 +810,8 @@ model PNCVisit {
   fpCounseledAndProvided String? // FP counseled & Provided
   remark                 String?
   actionTaken            String?
+
+  registrationVisit Visit? @relation("VisitToPNCVisit")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1,4 +1,5 @@
 import prisma from "../config/prisma";
+import type { Prisma } from "../generated/prisma/client";
 
 export interface CreateGBVScreeningDTO {
   patientId: string;
@@ -50,6 +51,20 @@ export interface CreateGBVScreeningDTO {
 }
 
 export class GBVScreeningRepository {
+  static async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: CreateGBVScreeningDTO
+  ) {
+    return tx.gBVScreening.create({
+      data,
+      include: {
+        patient: true,
+        recordedBy: true,
+        gbvReport: true,
+      },
+    });
+  }
+
   static async create(data: CreateGBVScreeningDTO) {
     return prisma.gBVScreening.create({
       data,

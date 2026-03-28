@@ -7,7 +7,7 @@ export class ANCController {
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const parsed = ancRecordSchema.parse(req.body);
-      const record = await ANCService.createANCRecord(parsed);
+      const record = await ANCService.createANCRecord(parsed, req.user!.id);
       res.status(201).json({
         success: true,
         message: "ANC Case have been registered successfully.",

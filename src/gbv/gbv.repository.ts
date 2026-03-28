@@ -1,4 +1,5 @@
 import prisma from "../config/prisma";
+import type { Prisma } from "../generated/prisma/client";
 
 export interface CreateGBVDTO {
   patientId: string;
@@ -23,6 +24,37 @@ export interface UpdateGBVDTO {
   highRisk?: boolean;
 }
 export class GBVRepository {
+  static async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: {
+      patientId: string;
+      recordedById: string;
+      incidentDate?: Date | null;
+      allegedPerpetratorEncrypted?: string | null;
+      victimStatementEncrypted?: string | null;
+      referralActionEncrypted?: string | null;
+      referral?: boolean | null;
+      referralInfo?: string | null;
+      attachmentUrl?: string | null;
+      highRisk?: boolean;
+    }
+  ) {
+    return tx.gBVReport.create({
+      data: {
+        patientId: data.patientId,
+        recordedById: data.recordedById,
+        incidentDate: data.incidentDate ?? null,
+        allegedPerpetratorEncrypted: data.allegedPerpetratorEncrypted ?? null,
+        victimStatementEncrypted: data.victimStatementEncrypted ?? null,
+        referralActionEncrypted: data.referralActionEncrypted ?? null,
+        referral: data.referral ?? null,
+        referralInfo: data.referralInfo ?? null,
+        attachmentUrl: data.attachmentUrl ?? null,
+        highRisk: data.highRisk ?? false,
+      },
+    });
+  }
+
   static async create(data: {
     patientId: string;
     recordedById: string;

@@ -1,10 +1,10 @@
+import { createLinkedCaseVisit } from "../common/caseVisit";
 import { AppError } from "../utils/AppError";
+import prisma from "../config/prisma";
 import { CreateANCRecordDTO, ANCRepository } from "./anc.repository";
 
 export class ANCService {
-  static async createANCRecord(dto: CreateANCRecordDTO) {
-    // Verify patient exists
-    const { default: prisma } = await import("../config/prisma");
+  static async createANCRecord(dto: CreateANCRecordDTO, recordedById: string) {
     const patientExists = await prisma.patient.findUnique({
       where: { id: dto.patientId },
     });
@@ -12,7 +12,15 @@ export class ANCService {
       throw new AppError("Patient not found", 404);
     }
 
-    return await ANCRepository.create(dto);
+    return await prisma.$transaction(async (tx) => {
+      const record = await ANCRepository.createInTransaction(tx, dto);
+      await createLinkedCaseVisit(tx, {
+        patientId: dto.patientId,
+        recordedById,
+        link: { category: "ANC", ancRecordId: record.id },
+      });
+      return record;
+    });
   }
 
   static async getANCRecord(id: string) {

@@ -94,6 +94,16 @@ export interface CreateANCRecordDTO {
 }
 
 export class ANCRepository {
+  static async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: CreateANCRecordDTO
+  ) {
+    return tx.aNCRecord.create({
+      data: data as Prisma.ANCRecordUncheckedCreateInput,
+      include: { patient: true },
+    });
+  }
+
   static async create(data: CreateANCRecordDTO) {
     return prisma.aNCRecord.create({
       data: data as Prisma.ANCRecordUncheckedCreateInput,

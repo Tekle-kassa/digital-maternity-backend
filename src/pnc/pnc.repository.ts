@@ -1,4 +1,5 @@
 import prisma from "../config/prisma";
+import type { Prisma } from "../generated/prisma/client";
 
 export interface CreatePNCVisitDTO {
   patientId: string;
@@ -47,6 +48,20 @@ export interface CreatePNCVisitDTO {
 }
 
 export class PNCRepository {
+  static async createInTransaction(
+    tx: Prisma.TransactionClient,
+    data: CreatePNCVisitDTO
+  ) {
+    return tx.pNCVisit.create({
+      data,
+      include: {
+        patient: true,
+        delivery: true,
+        recordedBy: true,
+      },
+    });
+  }
+
   static async create(data: CreatePNCVisitDTO) {
     return prisma.pNCVisit.create({
       data,

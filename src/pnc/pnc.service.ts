@@ -1,10 +1,10 @@
+import { createLinkedCaseVisit } from "../common/caseVisit";
+import prisma from "../config/prisma";
 import { AppError } from "../utils/AppError";
 import { CreatePNCVisitDTO, PNCRepository } from "./pnc.repository";
 
 export class PNCService {
   static async createPNCVisit(dto: CreatePNCVisitDTO) {
-    // Verify patient exists
-    const { default: prisma } = await import("../config/prisma");
     const patientExists = await prisma.patient.findUnique({
       where: { id: dto.patientId },
     });
@@ -12,7 +12,6 @@ export class PNCService {
       throw new AppError("Patient not found", 404);
     }
 
-    // Verify delivery exists if provided
     if (dto.deliveryId) {
       const deliveryExists = await prisma.delivery.findUnique({
         where: { id: dto.deliveryId },
@@ -22,7 +21,16 @@ export class PNCService {
       }
     }
 
-    return await PNCRepository.create(dto);
+    return await prisma.$transaction(async (tx) => {
+      const visitRow = await PNCRepository.createInTransaction(tx, dto);
+      await createLinkedCaseVisit(tx, {
+        patientId: dto.patientId,
+        recordedById: dto.recordedById,
+        visitDate: visitRow.visitDate,
+        link: { category: "PNC", pncVisitId: visitRow.id },
+      });
+      return visitRow;
+    });
   }
 
   static async getPNCVisit(id: string) {

@@ -1,6 +1,10 @@
 import { Router, Response, NextFunction } from "express";
 import db from "./db";
-import { authenticate, authorizeRoles, AuthRequest } from "../middleware/authMiddleware";
+import {
+  authenticate,
+  authorizeRoles,
+  AuthRequest,
+} from "../middleware/authMiddleware";
 import { sendData, sendError, parsePagination, meta } from "./helpers";
 import { mapVisitToApi } from "./mappers";
 import { VisitService } from "../visit/visit.service";
@@ -56,10 +60,13 @@ router.get(
   authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const { page, limit, skip } = parsePagination(req.query as Record<string, unknown>);
+      const { page, limit, skip } = parsePagination(
+        req.query as Record<string, unknown>,
+      );
       const where: Record<string, unknown> = {};
       if (req.query.patientId) where.patientId = String(req.query.patientId);
-      if (req.query.conductedById) where.recordedById = String(req.query.conductedById);
+      if (req.query.conductedById)
+        where.recordedById = String(req.query.conductedById);
 
       const total = await db.visit.count({ where });
       const visits = await db.visit.findMany({
@@ -72,15 +79,45 @@ router.get(
       sendData(
         res,
         visits.map((v: any) =>
-          mapVisitToApi(v, v.patient.fullName, v.recordedBy.fullName ?? v.recordedBy.phone)
+          mapVisitToApi(
+            v,
+            v.patient.fullName,
+            v.recordedBy.fullName ?? v.recordedBy.phone,
+          ),
         ),
         200,
-        meta(page, limit, total)
+        meta(page, limit, total),
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
+);
+
+/**
+ * @swagger
+ * /api/v1/visits/patient/{patientId}/case-visits:
+ *   get:
+ *     summary: Patient visit timeline (ANC / PNC / GBV / general)
+ *     description: Lists visits with visitCaseCategory and linkedCase for opening the right record.
+ *     tags: [DMP]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get(
+  "/patient/:patientId/case-visits",
+  authenticate,
+  authorizeRoles("MIDWIFE", "NURSE", "DOCTOR", "GBV_OFFICER", "ADMIN"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const visits = await VisitService.getPatientCaseVisits(
+        req.params.patientId,
+      );
+      res.json({ success: true, visits });
+    } catch (e) {
+      next(e);
+    }
+  },
 );
 
 /**
@@ -112,11 +149,18 @@ router.get(
         include: { patient: true, recordedBy: true },
       });
       if (!v) return sendError(res, "NOT_FOUND", "Visit not found", 404);
-      sendData(res, mapVisitToApi(v, v.patient.fullName, v.recordedBy.fullName ?? v.recordedBy.phone));
+      sendData(
+        res,
+        mapVisitToApi(
+          v,
+          v.patient.fullName,
+          v.recordedBy.fullName ?? v.recordedBy.phone,
+        ),
+      );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -162,13 +206,17 @@ router.post(
       });
       sendData(
         res,
-        mapVisitToApi(visit, visit.patient.fullName, visit.recordedBy.fullName ?? visit.recordedBy.phone),
-        201
+        mapVisitToApi(
+          visit,
+          visit.patient.fullName,
+          visit.recordedBy.fullName ?? visit.recordedBy.phone,
+        ),
+        201,
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -197,17 +245,27 @@ router.patch(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const body = req.body as Record<string, unknown>;
-      const updated = await VisitService.updateVisit(req.params.id, body as Partial<import("../visit/visit.repository").CreateVisitDTO>);
+      const updated = await VisitService.updateVisit(
+        req.params.id,
+        body as Partial<import("../visit/visit.repository").CreateVisitDTO>,
+      );
       const v = await db.visit.findUnique({
         where: { id: updated.id },
         include: { patient: true, recordedBy: true },
       });
       if (!v) return sendError(res, "NOT_FOUND", "Visit not found", 404);
-      sendData(res, mapVisitToApi(v, v.patient.fullName, v.recordedBy.fullName ?? v.recordedBy.phone));
+      sendData(
+        res,
+        mapVisitToApi(
+          v,
+          v.patient.fullName,
+          v.recordedBy.fullName ?? v.recordedBy.phone,
+        ),
+      );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -240,7 +298,7 @@ router.delete(
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 export default router;

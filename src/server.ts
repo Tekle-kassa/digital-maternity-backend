@@ -35,6 +35,8 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/patient", patientRoutes);
+/** Prenatal visits API (same router): plural path for Postman / API-REFERENCE; singular kept for compatibility */
+app.use("/api/v1/visits", visitRoutes);
 app.use("/api/v1/visit", visitRoutes);
 app.use("/api/v1/ultrasound", ultrasoundRoutes);
 app.use("/api/v1/role", roleRoutes);

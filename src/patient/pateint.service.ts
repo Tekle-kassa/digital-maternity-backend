@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { createLinkedCaseVisit } from "../common/caseVisit";
 import { AppError } from "../utils/AppError";
 import { CreatePatientDTO, PatientRepository } from "./patient.repository";
 import prisma from "../config/prisma";
@@ -171,6 +172,11 @@ export class PatientService {
           actionAdviceCounselling: ancPayload.actionAdviceCounselling,
         },
         include: { patient: true },
+      });
+      await createLinkedCaseVisit(tx, {
+        patientId: patient.id,
+        recordedById: userId,
+        link: { category: "ANC", ancRecordId: ancRecord.id },
       });
       return { patient, ancRecord };
     });

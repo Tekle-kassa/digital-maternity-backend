@@ -1,4 +1,6 @@
 import { log } from "../common/audit.service";
+import { createLinkedCaseVisit } from "../common/caseVisit";
+import prisma from "../config/prisma";
 import { PatientRepository } from "../patient/patient.repository";
 import { AppError } from "../utils/AppError";
 import { decryptField, encryptField } from "../utils/encryption";
@@ -17,18 +19,29 @@ export class GBVService {
     const referralEncrypted = dto.referralAction
       ? encryptField(dto.referralAction)
       : undefined;
-    const record = await GBVRepository.create({
-      patientId: dto.patientId,
-      recordedById: dto.recordedById,
-      incidentDate: dto.incidentDate ? new Date(dto.incidentDate) : undefined,
-      allegedPerpetratorEncrypted: allegedEncrypted,
-      victimStatementEncrypted: victimEncrypted,
-      referralActionEncrypted: referralEncrypted,
-      referral: dto.referral,
-      referralInfo: dto.referralInfo,
-      attachmentUrl: dto.attachmentUrl,
-      highRisk: dto.highRisk ?? false,
+
+    const record = await prisma.$transaction(async (tx) => {
+      const report = await GBVRepository.createInTransaction(tx, {
+        patientId: dto.patientId,
+        recordedById: dto.recordedById,
+        incidentDate: dto.incidentDate ? new Date(dto.incidentDate) : undefined,
+        allegedPerpetratorEncrypted: allegedEncrypted,
+        victimStatementEncrypted: victimEncrypted,
+        referralActionEncrypted: referralEncrypted,
+        referral: dto.referral,
+        referralInfo: dto.referralInfo,
+        attachmentUrl: dto.attachmentUrl,
+        highRisk: dto.highRisk ?? false,
+      });
+      await createLinkedCaseVisit(tx, {
+        patientId: dto.patientId,
+        recordedById: dto.recordedById,
+        visitDate: report.createdAt,
+        link: { category: "GBV_REPORT", gbvReportId: report.id },
+      });
+      return report;
     });
+
     await log(
       dto.recordedById,
       "gbv.create",
