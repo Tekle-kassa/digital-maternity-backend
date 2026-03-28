@@ -8,8 +8,16 @@ const router = Router();
  * @swagger
  * /api/v1/delivery:
  *   post:
- *     summary: Create delivery record (Delivery Summary Recording – full UI form)
- *     description: Accepts the full Delivery Summary Recording form – consent, delivery details, referral, AMTSL, placenta, laceration, management conditions, delivery assistance, HIV section, and newborns array. recordedById is set from auth token.
+ *     summary: Delivery Summary Recording (screens 1–7)
+ *     description: |
+ *       Maps the Register Client → Delivery Summary Recording UI:
+ *       - **Screen 1 – Consent:** clientConsentSignature, healthProfessionalConsentSignature
+ *       - **Screen 2 – Delivery details:** deliveryDate, deliveryTime, referral, referralInfo, amtsl (one drug or array), placenta, laceration
+ *       - **Screen 3 – Management:** obstetricCxManaged, aphManaged, rupturedUx, eclampsiaManaged, pphManaged, promSepsisManaged, obstPrologLaborManaged
+ *       - **Screen 4 – Assistance:** deliveryAssistanceMeasures, deliveryAssistanceMore
+ *       - **Screens 5–6 – Newborn(s):** newborns[] (quantity, sex, termStatus, alive, apgarScore, sb, birthWeightGm, lengthCm, vitK, ttc, babyMotherBonding)
+ *       - **Screen 7 – HIV / post-delivery:** hivCounsTestingOffered, hivTestingAccepted, hivTestResult (Yes/No or R/NR/I), arvpxForMothers, arvpxForNb, feedingOptionEbf, rf or **bc** (bc is stored as rf)
+ *       `recordedById` is set from the JWT.
  *     tags: [Delivery]
  *     security:
  *       - bearerAuth: []
@@ -19,109 +27,67 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - patientId
+ *             required: [patientId]
  *             properties:
- *               patientId:
- *                 type: string
- *                 format: uuid
- *               pregnancyId:
- *                 type: string
- *                 format: uuid
- *               clientConsentSignature:
- *                 type: string
- *                 description: Consent Form Delivery Client – Signature
- *               healthProfessionalConsentSignature:
- *                 type: string
- *                 description: Consent Form Health Professional – Signature
- *               deliveryDate:
- *                 type: string
- *                 format: date-time
- *               deliveryTime:
- *                 type: string
- *               referral:
- *                 type: boolean
- *                 description: Referral Yes/No
- *               referralInfo:
- *                 type: string
- *                 description: Optional referral details
+ *               patientId: { type: string, format: uuid }
+ *               pregnancyId: { type: string, format: uuid }
+ *               clientConsentSignature: { type: string }
+ *               healthProfessionalConsentSignature: { type: string }
+ *               deliveryDate: { type: string, format: date }
+ *               deliveryTime: { type: string }
+ *               referral: { type: boolean }
+ *               referralInfo: { type: string }
  *               amtsl:
- *                 type: string
- *                 enum: [Ergometrine, Oxytocin, Misoprostol]
+ *                 oneOf:
+ *                   - type: string
+ *                     enum: [Ergometrine, Oxytocin, Misoprostol]
+ *                   - type: array
+ *                     items:
+ *                       type: string
+ *                       enum: [Ergometrine, Oxytocin, Misoprostol]
+ *                 description: Single selection or multiple (stored comma-separated)
  *               placenta:
  *                 type: string
  *                 enum: [Completed, Incomplete, CCT, MRP, NRP]
  *               laceration:
  *                 type: string
- *                 enum: [1st Degree, 2nd Degree, 3rd Degree]
- *               obstetricCxManaged:
- *                 type: boolean
- *               aphManaged:
- *                 type: boolean
- *               rupturedUx:
- *                 type: boolean
- *               eclampsiaManaged:
- *                 type: boolean
- *               pphManaged:
- *                 type: boolean
- *               promSepsisManaged:
- *                 type: boolean
- *               obstPrologLaborManaged:
- *                 type: boolean
- *               deliveryAssistanceMeasures:
- *                 type: string
- *               deliveryAssistanceMore:
- *                 type: string
- *               hivCounsTestingOffered:
- *                 type: string
- *               hivTestingAccepted:
- *                 type: string
- *               hivTestResult:
- *                 type: string
- *               arvpxForMothers:
- *                 type: string
- *               arvpxForNb:
- *                 type: string
- *               feedingOptionEbf:
- *                 type: string
- *               rf:
- *                 type: string
+ *                 enum: ["1st Degree", "2nd Degree", "3rd Degree"]
+ *               obstetricCxManaged: { type: boolean }
+ *               aphManaged: { type: boolean }
+ *               rupturedUx: { type: boolean }
+ *               eclampsiaManaged: { type: boolean }
+ *               pphManaged: { type: boolean }
+ *               promSepsisManaged: { type: boolean }
+ *               obstPrologLaborManaged: { type: boolean }
+ *               deliveryAssistanceMeasures: { type: string }
+ *               deliveryAssistanceMore: { type: string }
+ *               hivCounsTestingOffered: { type: string, description: Prefer Yes/No }
+ *               hivTestingAccepted: { type: string }
+ *               hivTestResult: { type: string }
+ *               arvpxForMothers: { type: string }
+ *               arvpxForNb: { type: string }
+ *               feedingOptionEbf: { type: string }
+ *               rf: { type: string }
+ *               bc: { type: string, description: UI label BC; maps to rf if rf omitted }
  *               newborns:
  *                 type: array
  *                 items:
  *                   type: object
  *                   properties:
- *                     quantity:
- *                       type: string
- *                       enum: [Single, Multiple]
- *                     sex:
- *                       type: string
- *                       enum: [Male, Female]
- *                     termStatus:
- *                       type: string
- *                       enum: [Term, Preterm]
- *                     alive:
- *                       type: boolean
- *                     apgarScore:
- *                       type: integer
- *                       minimum: 0
- *                       maximum: 10
- *                     sb:
- *                       type: string
- *                       enum: [Mac, Fresh]
- *                     birthWeightGm:
- *                       type: number
- *                     lengthCm:
- *                       type: number
- *                     vitK:
- *                       type: boolean
- *                     ttc:
- *                       type: boolean
- *                     babyMotherBonding:
- *                       type: boolean
+ *                     quantity: { type: string, enum: [Single, Multiple] }
+ *                     sex: { type: string, enum: [Male, Female] }
+ *                     termStatus: { type: string, enum: [Term, Preterm] }
+ *                     alive: { type: boolean }
+ *                     apgarScore: { type: integer, minimum: 0, maximum: 10 }
+ *                     sb: { type: string, enum: [Mac, Fresh] }
+ *                     birthWeightGm: { type: number }
+ *                     lengthCm: { type: number }
+ *                     vitK: { type: boolean, description: Vit K (not NUK) }
+ *                     ttc: { type: boolean }
+ *                     babyMotherBonding: { type: boolean }
  *     responses:
  *       201:
- *         description: Delivery record created successfully (Delivery Overview registered)
+ *         description: Delivery created; message matches success flow
  */
 router.post("/", authenticate, DeliveryController.create);
 

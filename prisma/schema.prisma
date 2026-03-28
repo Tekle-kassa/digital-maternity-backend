@@ -700,7 +700,7 @@ model Delivery {
   // AMTSL (Active Management of Third Stage of Labor)
   amtsl String? // Ergometrine, Oxytocin, Misoprostol
 
-  // Placenta (Completed, Incomplete, CCT, NRP)
+  // Placenta (UI: Completed, Incomplete, CCT, MRP; NRP legacy)
   placenta String?
 
   // Laceration (1st Degree, 2nd Degree, 3rd Degree)

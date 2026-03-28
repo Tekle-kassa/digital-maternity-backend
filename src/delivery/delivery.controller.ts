@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { DeliveryService } from "./delivery.service";
 import { AuthRequest } from "../middleware/authMiddleware";
-import { deliverySchema } from "./delivery.validators";
+import { deliverySchema, deliveryUpdateSchema } from "./delivery.validators";
 
 export class DeliveryController {
   static async create(req: AuthRequest, res: Response, next: NextFunction) {
@@ -12,6 +12,7 @@ export class DeliveryController {
       const delivery = await DeliveryService.createDelivery(dto);
       res.status(201).json({
         success: true,
+        message: "Delivery Summary recorded successfully.",
         delivery,
       });
     } catch (error) {
@@ -52,7 +53,7 @@ export class DeliveryController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const parsed = deliverySchema.partial().parse(req.body);
+      const parsed = deliveryUpdateSchema.parse(req.body);
       const delivery = await DeliveryService.updateDelivery(
         req.params.id,
         parsed
