@@ -75,7 +75,7 @@ Ultrasound and referrals can be done in parallel when needed:
 
 | Step | API | Purpose |
 |------|-----|---------|
-| 3.1 | `POST /api/v1/delivery` | Create delivery (date, time, AMTSL, placenta, etc.). Optionally link `pregnancyId`. In the same body you can send **newborns** (e.g. sex, birth weight, Apgar, vit K, etc.). |
+| 3.1 | `POST /api/v1/delivery` | Create delivery (date, time, AMTSL, placenta, etc.). Use **`patientId` only** (no `pregnancyId`). In the same body you can send **newborns** (e.g. sex, birth weight, Apgar, vit K, etc.). |
 | 3.2 | `GET /api/v1/delivery/patient/:patientId` | List deliveries for the client. |
 | 3.3 | `GET /api/v1/delivery/:id` | Get one delivery (with newborns) if needed. |
 
@@ -136,10 +136,9 @@ All other endpoints (GET, PATCH, DELETE) are for reading, updating, or removing 
 - `DELETE /:id` - Delete ANC record
 
 ### Delivery (`/api/v1/delivery`)
-- `POST /` - Create delivery record (with newborns)
+- `POST /` - Create delivery record (with newborns); **`patientId` only** — pregnancy is not linked on this API
 - `GET /:id` - Get delivery by ID
 - `GET /patient/:patientId` - Get all deliveries for a patient
-- `GET /pregnancy/:pregnancyId` - Get all deliveries for a pregnancy
 - `PATCH /:id` - Update delivery record
 - `DELETE /:id` - Delete delivery record
 

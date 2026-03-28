@@ -12,16 +12,6 @@ export class DeliveryService {
       throw new AppError("Patient not found", 404);
     }
 
-    // Verify pregnancy exists if provided
-    if (dto.pregnancyId) {
-      const pregnancyExists = await prisma.pregnancy.findUnique({
-        where: { id: dto.pregnancyId },
-      });
-      if (!pregnancyExists) {
-        throw new AppError("Pregnancy not found", 404);
-      }
-    }
-
     return await DeliveryRepository.create(dto);
   }
 
@@ -33,10 +23,6 @@ export class DeliveryService {
 
   static async getDeliveriesByPatient(patientId: string) {
     return await DeliveryRepository.findByPatientId(patientId);
-  }
-
-  static async getDeliveriesByPregnancy(pregnancyId: string) {
-    return await DeliveryRepository.findByPregnancyId(pregnancyId);
   }
 
   static async updateDelivery(id: string, dto: Partial<CreateDeliveryDTO>) {

@@ -30,7 +30,6 @@ const router = Router();
  *             required: [patientId]
  *             properties:
  *               patientId: { type: string, format: uuid }
- *               pregnancyId: { type: string, format: uuid }
  *               clientConsentSignature: { type: string }
  *               healthProfessionalConsentSignature: { type: string }
  *               deliveryDate: { type: string, format: date }
@@ -135,31 +134,6 @@ router.get(
   "/patient/:patientId",
   authenticate,
   DeliveryController.getByPatient
-);
-
-/**
- * @swagger
- * /api/v1/delivery/pregnancy/{pregnancyId}:
- *   get:
- *     summary: Get all deliveries for a pregnancy
- *     tags: [Delivery]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: pregnancyId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: List of deliveries
- */
-router.get(
-  "/pregnancy/:pregnancyId",
-  authenticate,
-  DeliveryController.getByPregnancy
 );
 
 /**

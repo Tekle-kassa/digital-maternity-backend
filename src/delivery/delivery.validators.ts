@@ -21,7 +21,6 @@ const newbornSchema = z.object({
 /** Shared delivery fields (UI ↔ API). */
 const deliveryFields = {
   patientId: z.string().min(1, "Patient ID is required"),
-  pregnancyId: z.string().optional(),
   recordedById: z.string().min(1).optional(),
 
   // Screen 1 – Consent

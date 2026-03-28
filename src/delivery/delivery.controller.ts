@@ -40,17 +40,6 @@ export class DeliveryController {
     }
   }
 
-  static async getByPregnancy(req: Request, res: Response, next: NextFunction) {
-    try {
-      const deliveries = await DeliveryService.getDeliveriesByPregnancy(
-        req.params.pregnancyId
-      );
-      res.json({ success: true, deliveries });
-    } catch (err) {
-      next(err);
-    }
-  }
-
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const parsed = deliveryUpdateSchema.parse(req.body);

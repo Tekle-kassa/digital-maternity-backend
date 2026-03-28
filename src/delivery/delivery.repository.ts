@@ -16,7 +16,6 @@ export interface CreateNewbornDTO {
 
 export interface CreateDeliveryDTO {
   patientId: string;
-  pregnancyId?: string;
   recordedById: string;
 
   // Consent
@@ -101,19 +100,6 @@ export class DeliveryRepository {
   static async findByPatientId(patientId: string) {
     return prisma.delivery.findMany({
       where: { patientId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        patient: true,
-        pregnancy: true,
-        recordedBy: true,
-        newborns: true,
-      },
-    });
-  }
-
-  static async findByPregnancyId(pregnancyId: string) {
-    return prisma.delivery.findMany({
-      where: { pregnancyId },
       orderBy: { createdAt: "desc" },
       include: {
         patient: true,
