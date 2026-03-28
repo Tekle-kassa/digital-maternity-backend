@@ -7,6 +7,11 @@ export interface CreateUltrasoundDTO {
   imageUrl: string;
   description?: string;
   gestationalAge?: number;
+  /** Client device capture time (ISO parsed). */
+  capturedAt?: Date;
+  gain?: number;
+  depth?: number;
+  dynamicRange?: number;
 }
 
 export class UltrasoundRepository {

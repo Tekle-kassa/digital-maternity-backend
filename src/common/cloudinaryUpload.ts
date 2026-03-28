@@ -28,20 +28,29 @@ export function isCloudinaryConfigured(): boolean {
 
 const ULTRASOUND_FOLDER = "digital-maternity/ultrasounds";
 
+function resourceTypeForMimetype(mimetype: string): "image" | "video" {
+  return mimetype.startsWith("video/") ? "video" : "image";
+}
+
 /**
- * Upload image buffer to Cloudinary; returns HTTPS URL (secure_url).
+ * Upload image or video buffer to Cloudinary; returns HTTPS URL (secure_url).
  */
-export async function uploadUltrasoundImage(buffer: Buffer, _mimetype: string): Promise<string> {
+export async function uploadUltrasoundMedia(
+  buffer: Buffer,
+  mimetype: string
+): Promise<string> {
   ensureConfigured();
   if (!isCloudinaryConfigured()) {
     throw new Error("Cloudinary is not configured");
   }
 
+  const resource_type = resourceTypeForMimetype(mimetype);
+
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: ULTRASOUND_FOLDER,
-        resource_type: "image",
+        resource_type,
         use_filename: true,
         unique_filename: true,
       },
@@ -60,4 +69,12 @@ export async function uploadUltrasoundImage(buffer: Buffer, _mimetype: string): 
     );
     stream.end(buffer);
   });
+}
+
+/** @deprecated use uploadUltrasoundMedia */
+export async function uploadUltrasoundImage(
+  buffer: Buffer,
+  mimetype: string
+): Promise<string> {
+  return uploadUltrasoundMedia(buffer, mimetype);
 }

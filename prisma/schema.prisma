@@ -364,6 +364,11 @@ model Ultrasound {
   imageUrl       String
   description    String?
   gestationalAge Int?
+  /** Device-reported capture time (ISO 8601 from client). */
+  capturedAt     DateTime?
+  gain           Int?
+  depth          Int?
+  dynamicRange   Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   // scanDate      DateTime

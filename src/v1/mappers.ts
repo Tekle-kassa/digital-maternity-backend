@@ -138,21 +138,33 @@ export function mapUltrasoundToApi(
     annotations: string | null;
     createdAt: Date;
     takenById: string;
+    capturedAt?: Date | null;
+    gain?: number | null;
+    depth?: number | null;
+    dynamicRange?: number | null;
   },
   patientName: string,
-  capturedName: string
+  capturedName: string,
+  visit?: { id: string; visitCaseCategory: string } | null
 ) {
+  const deviceTime = u.capturedAt ?? u.createdAt;
   return {
     id: u.id,
     patientId: u.patientId,
     patientName,
     visitId: u.visitId ?? undefined,
-    captureDate: u.createdAt.toISOString(),
+    visitCaseCategory: visit?.visitCaseCategory,
+    /** ISO 8601 from device when provided, else server createdAt. */
+    timestamp: deviceTime.toISOString(),
+    captureDate: deviceTime.toISOString(),
     imageUrl: u.imageUrl,
     thumbnailUrl: u.imageUrl,
     gestationalAge: { weeks: u.gestationalAge ?? 0, days: 0 },
     findings: u.description ?? "",
     annotations: u.annotations ? [u.annotations] : [],
+    gain: u.gain ?? undefined,
+    depth: u.depth ?? undefined,
+    dynamicRange: u.dynamicRange ?? undefined,
     quality: "good" as const,
     capturedBy: capturedName,
     capturedById: u.takenById,

@@ -4,9 +4,10 @@ import { authenticate, authorizeRoles, AuthRequest } from "../middleware/authMid
 import { sendData, sendError, parsePagination, meta } from "./helpers";
 import { mapUltrasoundToApi } from "./mappers";
 import { UltrasoundService } from "../ultrsound/ultrasound.service";
-import { memoryUpload } from "../common/multerMemory";
-import { isCloudinaryConfigured, uploadUltrasoundImage } from "../common/cloudinaryUpload";
-import { z } from "zod";
+import { memoryUploadUltrasound } from "../common/multerMemory";
+import { isCloudinaryConfigured, uploadUltrasoundMedia } from "../common/cloudinaryUpload";
+import { parseUltrasoundMultipartFields } from "../ultrsound/ultrasound.validators";
+import { AppError } from "../utils/AppError";
 
 const router = Router();
 
@@ -51,12 +52,21 @@ router.get(
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-        include: { patient: true, takenBy: true },
+        include: {
+          patient: true,
+          takenBy: true,
+          visit: { select: { id: true, visitCaseCategory: true } },
+        },
       });
       sendData(
         res,
         rows.map((u: any) =>
-          mapUltrasoundToApi(u, u.patient.fullName, u.takenBy.fullName ?? u.takenBy.phone)
+          mapUltrasoundToApi(
+            u,
+            u.patient.fullName,
+            u.takenBy.fullName ?? u.takenBy.phone,
+            u.visit
+          )
         ),
         200,
         meta(page, limit, total)
@@ -91,10 +101,22 @@ router.get(
     try {
       const u = await db.ultrasound.findUnique({
         where: { id: req.params.id },
-        include: { patient: true, takenBy: true },
+        include: {
+          patient: true,
+          takenBy: true,
+          visit: { select: { id: true, visitCaseCategory: true } },
+        },
       });
       if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
-      sendData(res, mapUltrasoundToApi(u, u.patient.fullName, u.takenBy.fullName ?? u.takenBy.phone));
+      sendData(
+        res,
+        mapUltrasoundToApi(
+          u,
+          u.patient.fullName,
+          u.takenBy.fullName ?? u.takenBy.phone,
+          u.visit
+        )
+      );
     } catch (e) {
       next(e);
     }
@@ -105,7 +127,7 @@ router.get(
  * @swagger
  * /api/v1/ultrasounds:
  *   post:
- *     summary: Upload ultrasound image (multipart image field plus JSON fields)
+ *     summary: Upload ultrasound image or video (multipart)
  *     tags: [DMP]
  *     security:
  *       - bearerAuth: []
@@ -115,14 +137,33 @@ router.get(
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [image, patientId]
+ *             required: [file, timestamp, visitId]
  *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image or video (field name file; image accepted for backward compatibility)
+ *               timestamp:
+ *                 type: string
+ *                 description: ISO 8601 UTC capture time
+ *                 example: 2026-03-29T08:15:30.123Z
+ *               visitId:
+ *                 type: string
+ *                 format: uuid
+ *               gain:
+ *                 type: string
+ *                 description: Integer as string (optional)
+ *               depth:
+ *                 type: string
+ *               dynamicRange:
+ *                 type: string
  *               image:
  *                 type: string
  *                 format: binary
- *               patientId: { type: string, format: uuid }
- *               visitId: { type: string, format: uuid }
- *               captureDate: { type: string }
+ *                 deprecated: true
+ *               patientId:
+ *                 type: string
+ *                 deprecated: true
  *               gestationalAge: { type: string }
  *               findings: { type: string }
  *     responses:
@@ -133,7 +174,10 @@ router.post(
   "/",
   authenticate,
   authorizeRoles("MIDWIFE", "NURSE", "DOCTOR"),
-  memoryUpload.single("image"),
+  memoryUploadUltrasound.fields([
+    { name: "file", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+  ]),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       if (!isCloudinaryConfigured()) {
@@ -144,38 +188,75 @@ router.post(
           503
         );
       }
-      const file = (req as AuthRequest & { file?: Express.Multer.File }).file;
-      if (!file?.buffer) return sendError(res, "VALIDATION_ERROR", "image file required", 400);
-      const body = z
-        .object({
-          patientId: z.string().uuid(),
-          visitId: z.string().uuid().optional(),
-          captureDate: z.string().optional(),
-          gestationalAge: z.string().optional(),
-          findings: z.string().optional(),
-        })
-        .parse({
-          ...req.body,
-          gestationalAge: req.body.gestationalAge,
-        });
-      const imageUrl = await uploadUltrasoundImage(file.buffer, file.mimetype);
-      const ga = body.gestationalAge ? parseInt(String(body.gestationalAge), 10) : undefined;
+      const files = (req as AuthRequest & { files?: Record<string, Express.Multer.File[]> })
+        .files;
+      const file =
+        files?.file?.[0] ?? files?.image?.[0];
+      if (!file?.buffer) {
+        return sendError(
+          res,
+          "VALIDATION_ERROR",
+          "file required (multipart field name file, or image for legacy)",
+          400
+        );
+      }
+      const mime = file.mimetype || "";
+      if (!mime.startsWith("image/") && !mime.startsWith("video/")) {
+        return sendError(
+          res,
+          "VALIDATION_ERROR",
+          "file must be an image or video",
+          400
+        );
+      }
+
+      let fields;
+      try {
+        fields = parseUltrasoundMultipartFields(
+          req.body as Record<string, unknown>
+        );
+      } catch (e: unknown) {
+        if (e instanceof AppError && e.statusCode === 400) {
+          return sendError(res, "VALIDATION_ERROR", e.message, 400);
+        }
+        throw e;
+      }
+
+      const visit = await db.visit.findUnique({
+        where: { id: fields.visitId },
+      });
+      if (!visit) {
+        return sendError(res, "NOT_FOUND", "Visit not found", 404);
+      }
+
+      const imageUrl = await uploadUltrasoundMedia(file.buffer, mime);
       const created = await UltrasoundService.createUltrasound({
-        patientId: body.patientId,
-        visitId: body.visitId,
+        patientId: visit.patientId,
+        visitId: fields.visitId,
         takenById: req.user!.id,
         imageUrl,
-        description: body.findings,
-        gestationalAge: ga,
+        capturedAt: fields.capturedAt,
+        gain: fields.gain,
+        depth: fields.depth,
+        dynamicRange: fields.dynamicRange,
       });
       const u = await db.ultrasound.findUnique({
         where: { id: created.id },
-        include: { patient: true, takenBy: true },
+        include: {
+          patient: true,
+          takenBy: true,
+          visit: { select: { id: true, visitCaseCategory: true } },
+        },
       });
       if (!u) return sendError(res, "ERROR", "Create failed", 500);
       sendData(
         res,
-        mapUltrasoundToApi(u, u.patient.fullName, u.takenBy.fullName ?? u.takenBy.phone),
+        mapUltrasoundToApi(
+          u,
+          u.patient.fullName,
+          u.takenBy.fullName ?? u.takenBy.phone,
+          u.visit
+        ),
         201
       );
     } catch (e) {
@@ -210,10 +291,22 @@ router.patch(
       await UltrasoundService.updateUltrasound(req.params.id, req.body);
       const u = await db.ultrasound.findUnique({
         where: { id: req.params.id },
-        include: { patient: true, takenBy: true },
+        include: {
+          patient: true,
+          takenBy: true,
+          visit: { select: { id: true, visitCaseCategory: true } },
+        },
       });
       if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
-      sendData(res, mapUltrasoundToApi(u, u.patient.fullName, u.takenBy.fullName ?? u.takenBy.phone));
+      sendData(
+        res,
+        mapUltrasoundToApi(
+          u,
+          u.patient.fullName,
+          u.takenBy.fullName ?? u.takenBy.phone,
+          u.visit
+        )
+      );
     } catch (e) {
       next(e);
     }
