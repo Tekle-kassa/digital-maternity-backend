@@ -192,7 +192,11 @@ All other endpoints (GET, PATCH, DELETE) are for reading, updating, or removing 
 - `POST /remove` - Remove role from user
 
 ### Messages (`/api/v1/messages`)
-- `GET /conversations` - List my conversations (query: `folder=inbox|outbox`, `search`)
+- `GET /directory` - **Staff picker** (query: optional `search`, `limit`, `offset`). Lists active users with admin or clinical roles (ADMIN, MIDWIFE, DOCTOR, NURSE, GBV_OFFICER, SUPERVISOR); excludes you. Caller must have one of those roles. For choosing `recipientId` when composing.
+- `GET /mailbox` - **Email-style list** (query: required `folder=inbox|outbox`, optional `search`, `limit`, `offset`). Inbox = messages you received; outbox = messages you sent. Sorted by `createdAt` descending (flat list, not grouped by user/thread).
+- `GET /mailbox/:id` - Single message (full body, sender, recipient) if you are sender or recipient
+- `POST /mailbox` - Compose (body: `recipientId`, `body`, optional `attachmentUrl`); server resolves conversation
+- `GET /conversations` - List my conversations (legacy thread view; query: `folder=inbox|outbox`, `search`)
 - `POST /conversations` - Get or create conversation with another user (body: `otherUserId`)
 - `GET /conversations/:id` - Get one conversation
 - `GET /conversations/:id/messages` - List messages in conversation (query: `limit`, `offset`)

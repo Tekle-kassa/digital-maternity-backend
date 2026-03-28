@@ -6,9 +6,93 @@ import {
   sendMessageSchema,
   listMessagesQuerySchema,
   listConversationsQuerySchema,
+  mailboxListQuerySchema,
+  composeMailboxSchema,
+  staffDirectoryQuerySchema,
 } from "./messages.validators";
 
 export class MessagesController {
+  /** GET /directory – staff list for choosing message recipients. */
+  static async listStaffDirectory(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = (req as AuthRequest).user!.id;
+      const query = staffDirectoryQuerySchema.parse(req.query);
+      const result = await MessagesService.listStaffDirectory(userId, {
+        search: query.search,
+        limit: query.limit,
+        offset: query.offset,
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /mailbox – flat inbox/outbox by message time (newest first). */
+  static async listMailbox(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = (req as AuthRequest).user!.id;
+      const query = mailboxListQuerySchema.parse(req.query);
+      const result = await MessagesService.listMailbox(userId, query.folder, {
+        search: query.search,
+        limit: query.limit,
+        offset: query.offset,
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /mailbox/:id – single message (participant only). */
+  static async getMailboxMessage(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = (req as AuthRequest).user!.id;
+      const detail = await MessagesService.getMailboxMessage(
+        req.params.id,
+        userId
+      );
+      res.json({ success: true, message: detail });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** POST /mailbox – compose to recipient (no conversation id). */
+  static async composeMailbox(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const userId = (req as AuthRequest).user!.id;
+      const parsed = composeMailboxSchema.parse(req.body);
+      const attachmentUrl =
+        (req as any).file?.location || (req.body as any).attachmentUrl;
+      const message = await MessagesService.composeMailbox(
+        userId,
+        parsed.recipientId,
+        parsed.body,
+        attachmentUrl || undefined
+      );
+      res.status(201).json({ success: true, message });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   /** GET /conversations – list my conversations (inbox/outbox, search). */
   static async listConversations(
     req: AuthRequest,

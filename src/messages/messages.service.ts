@@ -1,8 +1,35 @@
 import { AppError } from "../utils/AppError";
+import { dbRolesToApi } from "../v1/roles";
+import { UserRepository } from "../user/user.repository";
 import {
   ConversationRepository,
   MessageRepository,
 } from "./messages.repository";
+
+type UserLite = {
+  id: string;
+  fullName: string | null;
+  phone: string;
+  displayId: string | null;
+  profileImageUrl: string | null;
+};
+
+function linePreview(body: string, max = 120): string {
+  const line =
+    body.split(/\r?\n/).find((l) => l.trim())?.trim() ?? "";
+  if (line.length <= max) return line;
+  return `${line.slice(0, max - 1)}…`;
+}
+
+function userSummary(u: UserLite) {
+  return {
+    id: u.id,
+    fullName: u.fullName,
+    phone: u.phone,
+    displayId: u.displayId ?? undefined,
+    profileImageUrl: u.profileImageUrl ?? undefined,
+  };
+}
 
 export class MessagesService {
   /** List conversations for current user with last message and unread count. */
@@ -167,5 +194,106 @@ export class MessagesService {
     }
     await MessageRepository.markConversationAsRead(conversationId, userId);
     return { ok: true };
+  }
+
+  /**
+   * Email-style mailbox: flat list of messages for inbox (received) or outbox (sent),
+   * newest first by createdAt.
+   */
+  static async listMailbox(
+    userId: string,
+    folder: "inbox" | "outbox",
+    opts: { search?: string; limit: number; offset: number }
+  ) {
+    const { search, limit, offset } = opts;
+    const [rows, total] = await Promise.all([
+      MessageRepository.findMailbox(userId, folder, {
+        search,
+        limit,
+        offset,
+      }),
+      MessageRepository.countMailbox(userId, folder, search),
+    ]);
+    const messages = rows.map((m) => {
+      const counterpart: UserLite =
+        folder === "inbox" ? m.sender : m.recipient;
+      return {
+        id: m.id,
+        conversationId: m.conversationId,
+        createdAt: m.createdAt,
+        preview: linePreview(m.body),
+        isUnread: folder === "inbox" ? m.readAt === null : false,
+        senderId: m.senderId,
+        recipientId: m.recipientId,
+        counterpart: userSummary(counterpart),
+        attachmentUrl: m.attachmentUrl ?? undefined,
+      };
+    });
+    return { messages, total, limit, offset };
+  }
+
+  /** One message by id if current user is sender or recipient (detail view). */
+  static async getMailboxMessage(messageId: string, userId: string) {
+    const msg = await MessageRepository.findById(messageId);
+    if (!msg) throw new AppError("Message not found", 404);
+    if (msg.senderId !== userId && msg.recipientId !== userId) {
+      throw new AppError("Forbidden", 403);
+    }
+    const isInbox = msg.recipientId === userId;
+    return {
+      id: msg.id,
+      conversationId: msg.conversationId,
+      body: msg.body,
+      createdAt: msg.createdAt,
+      readAt: msg.readAt,
+      isUnread: isInbox ? msg.readAt === null : false,
+      attachmentUrl: msg.attachmentUrl ?? undefined,
+      sender: userSummary(msg.sender),
+      recipient: userSummary(msg.recipient),
+    };
+  }
+
+  /** Compose without conversation id: resolves thread internally. */
+  static async composeMailbox(
+    senderId: string,
+    recipientId: string,
+    body: string,
+    attachmentUrl?: string
+  ) {
+    const conv = await MessagesService.getOrCreateConversation(
+      senderId,
+      recipientId
+    );
+    return MessagesService.sendMessage(
+      conv.id,
+      senderId,
+      body,
+      attachmentUrl
+    );
+  }
+
+  /** Active staff (admins + clinical roles) for recipient picker; excludes current user. */
+  static async listStaffDirectory(
+    currentUserId: string,
+    opts: { search?: string; limit: number; offset: number }
+  ) {
+    const { search, limit, offset } = opts;
+    const [rows, total] = await Promise.all([
+      UserRepository.findStaffDirectory(currentUserId, {
+        search,
+        limit,
+        offset,
+      }),
+      UserRepository.countStaffDirectory(currentUserId, search),
+    ]);
+    const users = rows.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      phone: u.phone,
+      displayId: u.displayId ?? undefined,
+      profileImageUrl: u.profileImageUrl ?? undefined,
+      role: dbRolesToApi(u.roles),
+    }));
+    return { users, total, limit, offset };
   }
 }

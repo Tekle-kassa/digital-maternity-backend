@@ -1,4 +1,51 @@
 import prisma from "../config/prisma";
+import type { Prisma } from "../generated/prisma/client";
+
+type MailboxFolder = "inbox" | "outbox";
+
+const ins = "insensitive" as const;
+
+function userSearchOr(t: string): Prisma.UserWhereInput {
+  return {
+    OR: [
+      { fullName: { contains: t, mode: ins } },
+      { phone: { contains: t, mode: ins } },
+      { displayId: { contains: t, mode: ins } },
+    ],
+  };
+}
+
+function buildMailboxWhere(
+  userId: string,
+  folder: MailboxFolder,
+  search?: string
+): Prisma.MessageWhereInput {
+  const base: Prisma.MessageWhereInput =
+    folder === "inbox"
+      ? { recipientId: userId }
+      : { senderId: userId };
+
+  const t = search?.trim();
+  if (!t) return base;
+
+  if (folder === "inbox") {
+    return {
+      ...base,
+      OR: [
+        { body: { contains: t, mode: ins } },
+        { sender: userSearchOr(t) },
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    OR: [
+      { body: { contains: t, mode: ins } },
+      { recipient: userSearchOr(t) },
+    ],
+  };
+}
 
 function canonicalUsers(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
@@ -103,10 +150,41 @@ export class MessageRepository {
     });
   }
 
-  static async findById(id: string) {
+  static async findById(
+    id: string
+  ): Promise<
+    Prisma.MessageGetPayload<{
+      include: { sender: true; recipient: true; conversation: true };
+    }> | null
+  > {
     return prisma.message.findUnique({
       where: { id },
       include: { sender: true, recipient: true, conversation: true },
+    });
+  }
+
+  static async findMailbox(
+    userId: string,
+    folder: MailboxFolder,
+    opts: { search?: string; limit?: number; offset?: number } = {}
+  ) {
+    const { limit = 50, offset = 0, search } = opts;
+    return prisma.message.findMany({
+      where: buildMailboxWhere(userId, folder, search),
+      include: { sender: true, recipient: true },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      skip: offset,
+    });
+  }
+
+  static async countMailbox(
+    userId: string,
+    folder: MailboxFolder,
+    search?: string
+  ) {
+    return prisma.message.count({
+      where: buildMailboxWhere(userId, folder, search),
     });
   }
 }

@@ -1,8 +1,140 @@
 import { Router } from "express";
 import { MessagesController } from "./messages.controller";
-import { authenticate } from "../middleware/authMiddleware";
+import {
+  authenticate,
+  authorizeRoles,
+} from "../middleware/authMiddleware";
+import { STAFF_DIRECTORY_ROLE_NAMES } from "../user/user.repository";
 
 const router = Router();
+
+/**
+ * @swagger
+ * /api/v1/messages/directory:
+ *   get:
+ *     summary: List staff users for messaging (admins + medical roles)
+ *     description: Active users with ADMIN, MIDWIFE, DOCTOR, NURSE, GBV_OFFICER, or SUPERVISOR role. Excludes the current user. Optional search on name, phone, displayId.
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: Paginated staff list
+ *       403:
+ *         description: Caller is not in an allowed role
+ */
+router.get(
+  "/directory",
+  authenticate,
+  authorizeRoles(...STAFF_DIRECTORY_ROLE_NAMES),
+  MessagesController.listStaffDirectory
+);
+
+/**
+ * @swagger
+ * /api/v1/messages/mailbox:
+ *   get:
+ *     summary: List messages (email-style inbox/outbox, newest first)
+ *     description: Inbox = messages where you are recipient; outbox = messages you sent. Not grouped by thread.
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: folder
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [inbox, outbox]
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *     responses:
+ *       200:
+ *         description: Paginated message rows with preview and counterpart
+ */
+router.get("/mailbox", authenticate, MessagesController.listMailbox);
+
+/**
+ * @swagger
+ * /api/v1/messages/mailbox/{id}:
+ *   get:
+ *     summary: Get one message (detail)
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Full message with sender and recipient
+ */
+router.get(
+  "/mailbox/:id",
+  authenticate,
+  MessagesController.getMailboxMessage
+);
+
+/**
+ * @swagger
+ * /api/v1/messages/mailbox:
+ *   post:
+ *     summary: Compose message to a user (conversation resolved server-side)
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [recipientId, body]
+ *             properties:
+ *               recipientId:
+ *                 type: string
+ *                 format: uuid
+ *               body:
+ *                 type: string
+ *               attachmentUrl:
+ *                 type: string
+ *                 format: uri
+ *     responses:
+ *       201:
+ *         description: Message created
+ */
+router.post("/mailbox", authenticate, MessagesController.composeMailbox);
 
 /**
  * @swagger

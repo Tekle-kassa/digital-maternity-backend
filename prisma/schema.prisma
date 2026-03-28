@@ -852,6 +852,8 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([recipientId, readAt])
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
 }
 
 model Appointment {
