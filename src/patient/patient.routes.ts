@@ -45,7 +45,7 @@ router.post(
   "/anc/basic-information",
   authenticate,
   authorizeRoles(...ALLOWED),
-  PatientController.createAncBasicInformation
+  PatientController.createAncBasicInformation,
 );
 
 /**
@@ -80,7 +80,7 @@ router.post(
   "/register-client",
   authenticate,
   authorizeRoles(...ALLOWED),
-  PatientController.registerClient
+  PatientController.registerClient,
 );
 
 /** UNFPA DMP-style patient API (API-REFERENCE.md) — same as GET/POST /api/v1/patients */
