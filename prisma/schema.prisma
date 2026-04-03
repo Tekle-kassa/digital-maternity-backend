@@ -146,6 +146,12 @@ model User {
   mustChangePassword Boolean            @default(true)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+
+  /** Profile / staff row sync to central (omit secrets in outbound payloads). */
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   patientsCreated    Patient[]          @relation("UserCreatedPatients")
   visitsRecorded     Visit[]            @relation("UserRecordedANC")
   ultrasoundScans    Ultrasound[]
@@ -272,6 +278,10 @@ model Patient {
   createdBy        User     @relation("UserCreatedPatients", fields: [createdById], references: [id])
   // demographics    PatientDemographics?
 
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   visits           Visit[]
   // ultrasoundScans Ultrasound[]
   // gbvCases        GBVCase[]
@@ -320,6 +330,11 @@ model Visit {
   notes          String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   // riskScore         RiskScore
   pregnancy      Pregnancy? @relation(fields: [pregnancyId], references: [id])
 
@@ -371,6 +386,11 @@ model Ultrasound {
   dynamicRange   Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   // scanDate      DateTime
   annotations    String?
   takenById      String
@@ -392,6 +412,11 @@ model GBVReport {
   highRisk                    Boolean        @default(false)
   createdAt                   DateTime       @default(now())
   updatedAt                   DateTime       @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   recordedById                String
   recordedBy                  User           @relation(fields: [recordedById], references: [id])
   gbvScreenings               GBVScreening[]
@@ -451,6 +476,10 @@ model GBVScreening {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   patient     Patient    @relation(fields: [patientId], references: [id])
   recordedBy  User       @relation(fields: [recordedById], references: [id])
   gbvReport   GBVReport? @relation(fields: [gbvReportId], references: [id])
@@ -501,6 +530,10 @@ model SRHRegistration {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 
   patient    Patient @relation(fields: [patientId], references: [id])
   recordedBy User    @relation(fields: [recordedById], references: [id])
@@ -554,6 +587,10 @@ model Referral {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   patient   Patient @relation(fields: [patientId], references: [id])
   createdBy User    @relation(fields: [createdById], references: [id])
 }
@@ -574,6 +611,10 @@ model Pregnancy {
   active       Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 
   visits     Visit[]
   patient    Patient    @relation(fields: [patientId], references: [id])
@@ -684,6 +725,10 @@ model ANCRecord {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 }
 
 model Delivery {
@@ -736,6 +781,10 @@ model Delivery {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   patient    Patient    @relation(fields: [patientId], references: [id])
   pregnancy  Pregnancy? @relation(fields: [pregnancyId], references: [id])
   recordedBy User       @relation(fields: [recordedById], references: [id])
@@ -766,6 +815,10 @@ model Newborn {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 
   delivery Delivery @relation(fields: [deliveryId], references: [id])
 }
@@ -821,6 +874,10 @@ model PNCVisit {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
+
   patient    Patient   @relation(fields: [patientId], references: [id])
   delivery   Delivery? @relation(fields: [deliveryId], references: [id])
   recordedBy User      @relation(fields: [recordedById], references: [id])
@@ -832,6 +889,10 @@ model Conversation {
   user2Id   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 
   user1    User     @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
   user2    User     @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
@@ -850,6 +911,10 @@ model Message {
   attachmentUrl  String?
   readAt         DateTime?
   createdAt      DateTime  @default(now())
+
+  syncStatus DmpEntitySyncStatus @default(pending)
+  syncedAt   DateTime?
+  syncError  String?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("MessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
@@ -923,6 +988,8 @@ model TeleconsultRequest {
   assignedSpecialist     User?                @relation("TcAssigned", fields: [assignedSpecialistId], references: [id])
   status                 ApiConsultStatus     @default(pending)
   syncStatus             DmpEntitySyncStatus  @default(pending)
+  syncedAt               DateTime?
+  syncError              String?
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   response               TeleconsultResponse?

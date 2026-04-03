@@ -4,9 +4,41 @@ import { authenticate, AuthRequest } from "../middleware/authMiddleware";
 import { sendData, sendError } from "./helpers";
 import { z } from "zod";
 import config from "../config";
-import { enqueueSyncItem, ingestBatchFromLocal, pushPendingToCentral } from "./sync.service";
+import {
+  enqueueSyncItem,
+  ingestBatchFromLocal,
+  pushPendingToCentral,
+} from "./sync.service";
+import {
+  CRON_SLUG_BY_ENTITY,
+  ENTITY_TYPES_FOR_CRON,
+  getEntitySyncCronSummaryFor,
+  pushPendingEntityTableToCentral,
+  type CronEntityType,
+} from "./sync-cron.service";
 
 const router = Router();
+
+function syncCronAuth(req: Request, res: Response, next: NextFunction) {
+  if (!config.syncCronSecret) {
+    return sendError(
+      res,
+      "NOT_CONFIGURED",
+      "Entity sync cron is disabled (set SYNC_CRON_SECRET)",
+      503,
+    );
+  }
+  const key = req.headers["x-sync-cron-secret"];
+  if (typeof key !== "string" || key !== config.syncCronSecret) {
+    return sendError(
+      res,
+      "UNAUTHORIZED",
+      "Invalid or missing X-Sync-Cron-Secret header",
+      401,
+    );
+  }
+  next();
+}
 
 function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
   if (!config.syncIngestSecret) {
@@ -14,7 +46,7 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
       res,
       "NOT_CONFIGURED",
       "Sync ingest is disabled (set SYNC_INGEST_SECRET on the central server)",
-      503
+      503,
     );
   }
   const key = req.headers["x-sync-ingest-key"];
@@ -54,30 +86,118 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *       503:
  *         description: Ingest not configured
  */
-router.post("/ingest", syncIngestAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const body = z
-      .object({
-        facilityId: z.string().min(1),
-        clinicId: z.string().optional(),
-        items: z.array(
-          z.object({
-            id: z.string().uuid(),
-            entityType: z.string(),
-            entityId: z.string(),
-            action: z.string(),
-            payload: z.unknown().optional(),
-            createdAt: z.string().optional(),
+/**
+ * @swagger
+ * /api/v1/sync/cron/patients/summary:
+ *   get:
+ *     summary: Row sync counts for one table (cron)
+ *     tags: [DMP]
+ *     security: []
+ *     parameters:
+ *       - in: header
+ *         name: X-Sync-Cron-Secret
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: "{ entityType, slug, pending, synced, conflict }" }
+ * /api/v1/sync/cron/patients/push:
+ *   post:
+ *     summary: Push pending rows for one table to central (cron)
+ *     tags: [DMP]
+ *     security: []
+ *     parameters:
+ *       - in: header
+ *         name: X-Sync-Cron-Secret
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               limit: { type: integer, default: 25, maximum: 100 }
+ *     responses:
+ *       200: { description: push result }
+ *       400: { description: sync failed }
+ *
+ * Slugs — patients, users, visits, ultrasounds, gbv-reports, gbv-screenings, srh-registrations,
+ * referrals, pregnancies, anc-records, deliveries, newborns, pnc-visits, conversations, messages,
+ * teleconsult-requests. Response `entityType` is the Prisma model name.
+ */
+console.log("asd");
+for (const entityType of ENTITY_TYPES_FOR_CRON) {
+  const slug = CRON_SLUG_BY_ENTITY[entityType as CronEntityType];
+  const base = `/cron/${slug}`;
+
+  router.get(
+    `${base}/summary`,
+    syncCronAuth,
+    async (_req: Request, res: Response, next: NextFunction) => {
+      try {
+        const counts = await getEntitySyncCronSummaryFor(
+          entityType as CronEntityType,
+        );
+        sendData(res, { entityType, slug, ...counts });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  router.post(
+    `${base}/push`,
+    syncCronAuth,
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const body = z
+          .object({
+            limit: z.coerce.number().int().min(1).max(100).optional(),
           })
-        ),
-      })
-      .parse(req.body);
-    const result = await ingestBatchFromLocal(body);
-    sendData(res, result);
-  } catch (e) {
-    next(e);
-  }
-});
+          .parse(req.body ?? {});
+        const result = await pushPendingEntityTableToCentral(
+          entityType as CronEntityType,
+          body.limit,
+        );
+        if (result.error) {
+          return sendError(res, "SYNC_FAILED", result.error, 400);
+        }
+        sendData(res, { entityType, slug, ...result });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+}
+
+router.post(
+  "/ingest",
+  syncIngestAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = z
+        .object({
+          facilityId: z.string().min(1),
+          clinicId: z.string().optional(),
+          items: z.array(
+            z.object({
+              id: z.string().uuid(),
+              entityType: z.string(),
+              entityId: z.string(),
+              action: z.string(),
+              payload: z.unknown().optional(),
+              createdAt: z.string().optional(),
+            }),
+          ),
+        })
+        .parse(req.body);
+      const result = await ingestBatchFromLocal(body);
+      sendData(res, result);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @swagger
@@ -98,22 +218,26 @@ router.post("/ingest", syncIngestAuth, async (req: Request, res: Response, next:
  *       201:
  *         description: Queue item created
  */
-router.post("/enqueue", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const body = z
-      .object({
-        entityType: z.string().min(1),
-        entityId: z.string().uuid(),
-        action: z.enum(["create", "update", "delete"]),
-        payload: z.unknown().optional(),
-      })
-      .parse(req.body);
-    const row = await enqueueSyncItem(body);
-    sendData(res, { id: row.id, status: row.status }, 201);
-  } catch (e) {
-    next(e);
-  }
-});
+router.post(
+  "/enqueue",
+  authenticate,
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const body = z
+        .object({
+          entityType: z.string().min(1),
+          entityId: z.string().uuid(),
+          action: z.enum(["create", "update", "delete"]),
+          payload: z.unknown().optional(),
+        })
+        .parse(req.body);
+      const row = await enqueueSyncItem(body);
+      sendData(res, { id: row.id, status: row.status }, 201);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @swagger
@@ -141,7 +265,8 @@ router.get(
         db.syncConflict.count({ where: { resolved: false } }),
       ]);
       sendData(res, {
-        lastSyncTime: last?.syncTimestamp.toISOString() ?? new Date().toISOString(),
+        lastSyncTime:
+          last?.syncTimestamp.toISOString() ?? new Date().toISOString(),
         pendingUploads,
         pendingDownloads: 0,
         conflicts,
@@ -152,7 +277,7 @@ router.get(
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -181,13 +306,16 @@ router.post(
   authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50));
+      const limit = Math.min(
+        100,
+        Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+      );
       if (!config.centralSyncUrl) {
         return sendError(
           res,
           "NOT_CONFIGURED",
           "Local→central sync is not configured (set CENTRAL_SYNC_URL, FACILITY_ID, CENTRAL_SYNC_SECRET)",
-          400
+          400,
         );
       }
       const result = await pushPendingToCentral(req.user!.id, limit);
@@ -196,7 +324,7 @@ router.post(
       const msg = e instanceof Error ? e.message : "Sync failed";
       sendError(res, "SYNC_FAILED", msg, 400);
     }
-  }
+  },
 );
 
 /**
@@ -230,12 +358,12 @@ router.get(
           status: i.status.toLowerCase(),
           timestamp: i.createdAt.toISOString(),
           progress: i.progress ?? undefined,
-        }))
+        })),
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -271,12 +399,12 @@ router.get(
           serverValue: c.serverValue,
           localTimestamp: c.localTimestamp.toISOString(),
           serverTimestamp: c.serverTimestamp.toISOString(),
-        }))
+        })),
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -331,7 +459,7 @@ router.post(
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 export default router;

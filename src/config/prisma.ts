@@ -2,6 +2,9 @@
 // import { PrismaClient } from "@prisma/client";
 // import { PrismaClient } from "../generated/prisma/client";
 import { PrismaClient } from "../generated/prisma/client";
-const prisma = new PrismaClient();
+import { extendPrismaWithSyncPending } from "./prismaSyncExtension";
 
-export default prisma;
+const base = new PrismaClient();
+const prisma = extendPrismaWithSyncPending(base);
+
+export default prisma as unknown as PrismaClient;

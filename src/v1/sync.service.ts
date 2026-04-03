@@ -3,6 +3,56 @@ import config from "../config";
 
 export type SyncQueueActionType = "create" | "update" | "delete";
 
+/** POST a batch to central `/api/v1/sync/ingest` (shared by queue drain and entity-row cron). */
+export async function postCentralIngest(body: IngestBatchBody): Promise<{
+  ok: boolean;
+  status: number;
+  accepted?: number;
+  duplicates?: number;
+  errorMessage?: string;
+}> {
+  const baseUrl = config.centralSyncUrl;
+  const secret = config.centralSyncSecret;
+  if (!baseUrl || !secret) {
+    return { ok: false, status: 0, errorMessage: "CENTRAL_SYNC_URL or CENTRAL_SYNC_SECRET not set" };
+  }
+  const url = `${baseUrl}/api/v1/sync/ingest`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sync-Ingest-Key": secret,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      errorMessage: e instanceof Error ? e.message : "Network error",
+    };
+  }
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { accepted?: number; duplicates?: number };
+    error?: { message?: string };
+  };
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      errorMessage: json?.error?.message || res.statusText || String(res.status),
+    };
+  }
+  return {
+    ok: true,
+    status: res.status,
+    accepted: json?.data?.accepted ?? undefined,
+    duplicates: json?.data?.duplicates ?? undefined,
+  };
+}
+
 export async function enqueueSyncItem(input: {
   entityType: string;
   entityId: string;
@@ -51,8 +101,7 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
     data: { status: "uploading", errorMessage: null },
   });
 
-  const url = `${baseUrl}/api/v1/sync/ingest`;
-  const body = {
+  const body: IngestBatchBody = {
     facilityId,
     clinicId: config.facilityClinicId || undefined,
     items: items.map((i: any) => ({
@@ -65,16 +114,9 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
     })),
   };
 
-  let res: Response;
+  let ingestResult: Awaited<ReturnType<typeof postCentralIngest>>;
   try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Sync-Ingest-Key": secret,
-      },
-      body: JSON.stringify(body),
-    });
+    ingestResult = await postCentralIngest(body);
   } catch (e) {
     await db.syncQueueItem.updateMany({
       where: { id: { in: ids } },
@@ -95,17 +137,12 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
     throw e;
   }
 
-  const json = (await res.json().catch(() => ({}))) as {
-    data?: { accepted?: number; duplicates?: number };
-    error?: { message?: string };
-  };
-
-  if (!res.ok) {
+  if (!ingestResult.ok) {
     await db.syncQueueItem.updateMany({
       where: { id: { in: ids } },
       data: {
         status: "failed",
-        errorMessage: json?.error?.message || res.statusText || String(res.status),
+        errorMessage: ingestResult.errorMessage || "Central ingest failed",
       },
     });
     await db.syncLog.create({
@@ -117,11 +154,11 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
         status: "Failed",
       },
     });
-    throw new Error(json?.error?.message || `Central returned ${res.status}`);
+    throw new Error(ingestResult.errorMessage || `Central returned ${ingestResult.status}`);
   }
 
-  const accepted = json?.data?.accepted ?? items.length;
-  const duplicates = json?.data?.duplicates ?? 0;
+  const accepted = ingestResult.accepted ?? items.length;
+  const duplicates = ingestResult.duplicates ?? 0;
 
   await db.syncQueueItem.updateMany({
     where: { id: { in: ids } },
