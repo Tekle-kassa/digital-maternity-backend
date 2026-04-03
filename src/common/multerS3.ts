@@ -1,11 +1,11 @@
 import multer from "multer";
 import multerS3 from "multer-s3";
-import s3 from "../config/s3";
+import s3, { s3BucketName } from "../config/s3";
 
 export const ultrasoundUpload = multer({
   storage: multerS3({
     s3,
-    bucket: "digital-maternity-ultrasound",
+    bucket: s3BucketName,
     acl: "public-read",
     metadata: (_: any, file: any, cb: any) => {
       cb(null, { fieldName: file.fieldname });

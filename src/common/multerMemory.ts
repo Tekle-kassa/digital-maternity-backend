@@ -3,7 +3,7 @@ import multer from "multer";
 const maxBytes = 15 * 1024 * 1024; // 15MB
 const ultrasoundMaxBytes = 100 * 1024 * 1024; // 100MB (video)
 
-/** In-memory multipart (for Cloudinary upload in handler). */
+/** In-memory multipart (buffer then uploaded to S3 in handler). */
 export const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: maxBytes },

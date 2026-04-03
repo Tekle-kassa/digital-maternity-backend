@@ -5,7 +5,10 @@ import { sendData, sendError, parsePagination, meta } from "./helpers";
 import { mapUltrasoundToApi } from "./mappers";
 import { UltrasoundService } from "../ultrsound/ultrasound.service";
 import { memoryUploadUltrasound } from "../common/multerMemory";
-import { isCloudinaryConfigured, uploadUltrasoundMedia } from "../common/cloudinaryUpload";
+import {
+  isS3UploadConfigured,
+  uploadUltrasoundMedia,
+} from "../common/s3Upload";
 import { parseUltrasoundMultipartFields } from "../ultrsound/ultrasound.validators";
 import { AppError } from "../utils/AppError";
 
@@ -180,11 +183,11 @@ router.post(
   ]),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!isCloudinaryConfigured()) {
+      if (!isS3UploadConfigured()) {
         return sendError(
           res,
           "NOT_CONFIGURED",
-          "Cloudinary is not configured. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.",
+          "S3 is not configured. Set AWS_REGION, AWS_S3_BUCKET (or S3_BUCKET), and credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY or IAM role). Optional: AWS_S3_PUBLIC_BASE_URL for CloudFront.",
           503
         );
       }
