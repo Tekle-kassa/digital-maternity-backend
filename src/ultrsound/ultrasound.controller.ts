@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { publicUrlFromMulterS3File } from "../config/s3";
 import { UltrasoundService, UltrasoundScanData } from "./ultrasound.service";
 import { AuthRequest } from "../middleware/authMiddleware";
 import { ultrasoundSchema } from "./ultrasound.validators";
@@ -11,7 +12,7 @@ export class UltrasoundController {
       if (!req.file) {
         throw new AppError("Image is required", 400);
       }
-      const imageUrl = (req.file as any).location;
+      const imageUrl = publicUrlFromMulterS3File(req.file as any);
       const parsed = ultrasoundSchema.parse(req.body);
       const dto = {
         ...parsed,

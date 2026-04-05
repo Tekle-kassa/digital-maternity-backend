@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { publicUrlFromMulterS3File } from "../config/s3";
 import { MessagesService } from "./messages.service";
 import { AuthRequest } from "../middleware/authMiddleware";
 import {
@@ -80,7 +81,9 @@ export class MessagesController {
       const userId = (req as AuthRequest).user!.id;
       const parsed = composeMailboxSchema.parse(req.body);
       const attachmentUrl =
-        (req as any).file?.location || (req.body as any).attachmentUrl;
+        (req as any).file != null
+          ? publicUrlFromMulterS3File((req as any).file)
+          : (req.body as any).attachmentUrl;
       const message = await MessagesService.composeMailbox(
         userId,
         parsed.recipientId,
@@ -180,7 +183,9 @@ export class MessagesController {
       const userId = (req as AuthRequest).user!.id;
       const parsed = sendMessageSchema.parse(req.body);
       const attachmentUrl =
-        (req as any).file?.location || (req.body as any).attachmentUrl;
+        (req as any).file != null
+          ? publicUrlFromMulterS3File((req as any).file)
+          : (req.body as any).attachmentUrl;
       const message = await MessagesService.sendMessage(
         req.params.id,
         userId,

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { publicUrlFromMulterS3File } from "../config/s3";
 import { ReferralService } from "./referral.service";
 
 export class ReferralController {
@@ -9,7 +10,9 @@ export class ReferralController {
       const dto = {
         ...req.body,
         createdById: user.id,
-        attachmentUrl: req.file ? (req.file as any).location : undefined,
+        attachmentUrl: req.file
+          ? publicUrlFromMulterS3File(req.file as any)
+          : undefined,
       };
 
       const result = await ReferralService.createReferral(dto);
@@ -41,7 +44,9 @@ export class ReferralController {
     try {
       const updateData = {
         ...req.body,
-        attachmentUrl: req.file ? (req.file as any).location : undefined,
+        attachmentUrl: req.file
+          ? publicUrlFromMulterS3File(req.file as any)
+          : undefined,
       };
 
       const result = await ReferralService.updateReferral(

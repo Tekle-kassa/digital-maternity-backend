@@ -5,6 +5,7 @@ import { sendData, sendError, parsePagination, meta } from "./helpers";
 import { mapGbvToApi } from "./mappers";
 import { GBVService } from "../gbv/gbv.service";
 import { ultrasoundUpload } from "../common/multerS3";
+import { publicUrlFromMulterS3File } from "../config/s3";
 import { z } from "zod";
 
 const router = Router();
@@ -141,7 +142,9 @@ router.post(
         })
         .parse(req.body);
       const attachmentUrl = file
-        ? (file as Express.Multer.File & { location?: string }).location
+        ? publicUrlFromMulterS3File(
+            file as Express.Multer.File & { location?: string; key?: string }
+          )
         : undefined;
       const { id: newId } = await GBVService.createGBV({
         patientId: parsed.patientId,

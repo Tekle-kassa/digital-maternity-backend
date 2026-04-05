@@ -187,7 +187,7 @@ router.post(
         return sendError(
           res,
           "NOT_CONFIGURED",
-          "S3 is not configured. Set AWS_REGION, AWS_S3_BUCKET (or S3_BUCKET), and credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY or IAM role). For MinIO, set S3_ENDPOINT (e.g. http://localhost:9000). Optional: AWS_S3_PUBLIC_BASE_URL if the URL clients use differs from the API endpoint.",
+          "S3 is not configured. Set AWS_REGION, AWS_S3_BUCKET (or S3_BUCKET), and credentials (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY or IAM role). For private MinIO from the server use AWS_S3_ENDPOINT. If that URL is not reachable by clients, set AWS_S3_PUBLIC_BASE_URL for returned imageUrl values.",
           503
         );
       }

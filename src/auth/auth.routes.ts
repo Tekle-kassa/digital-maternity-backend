@@ -53,7 +53,7 @@ router.post(
   "/register",
   // authenticate,
   // authorizeRoles("ADMIN"),
-  AuthController.register
+  AuthController.register,
 );
 
 /**
@@ -236,7 +236,7 @@ router.post("/change-password", authenticate, AuthController.changePassword);
  */
 router.post(
   "/first-time-change-password",
-  AuthController.firstTimeChangePassword
+  AuthController.firstTimeChangePassword,
 );
 
 /**

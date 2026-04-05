@@ -3,6 +3,7 @@ import db from "./db";
 import { authenticate, AuthRequest } from "../middleware/authMiddleware";
 import { sendData, sendError } from "./helpers";
 import { ultrasoundUpload } from "../common/multerS3";
+import { publicUrlFromMulterS3File } from "../config/s3";
 import { z } from "zod";
 
 const router = Router();
@@ -45,7 +46,9 @@ router.post(
           category: z.enum(["ultrasound", "attachment", "avatar", "document"]),
         })
         .parse(req.body);
-      const loc = (file as Express.Multer.File & { location?: string; size?: number }).location ?? "";
+      const loc = publicUrlFromMulterS3File(
+        file as Express.Multer.File & { location?: string; key?: string }
+      );
       const size = BigInt(file.size ?? 0);
       const rec = await db.uploadedFile.create({
         data: {
