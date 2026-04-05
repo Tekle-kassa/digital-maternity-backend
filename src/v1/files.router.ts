@@ -103,9 +103,6 @@ router.get(
     try {
       const f = await db.uploadedFile.findUnique({ where: { id: req.params.id } });
       if (!f) return sendError(res, "NOT_FOUND", "Not found", 404);
-      const isUploader = f.uploadedById === req.user!.id;
-      const roles = req.user!.roles ?? [];
-      if (!isUploader && !roles.includes("ADMIN")) return sendError(res, "FORBIDDEN", "Forbidden", 403);
       sendData(res, {
         id: f.id,
         url: f.url,
@@ -145,9 +142,6 @@ router.delete(
     try {
       const f = await db.uploadedFile.findUnique({ where: { id: req.params.id } });
       if (!f) return sendError(res, "NOT_FOUND", "Not found", 404);
-      const roles = req.user!.roles ?? [];
-      if (f.uploadedById !== req.user!.id && !roles.includes("ADMIN"))
-        return sendError(res, "FORBIDDEN", "Forbidden", 403);
       await db.uploadedFile.delete({ where: { id: req.params.id } });
       res.status(204).send();
     } catch (e) {

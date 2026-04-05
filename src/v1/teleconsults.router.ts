@@ -337,10 +337,6 @@ router.delete(
     try {
       const tc = await db.teleconsultRequest.findUnique({ where: { id: req.params.id } });
       if (!tc) return sendError(res, "NOT_FOUND", "Not found", 404);
-      if (tc.requestedById !== req.user!.id) {
-        const roles = req.user!.roles ?? [];
-        if (!roles.includes("ADMIN")) return sendError(res, "FORBIDDEN", "Forbidden", 403);
-      }
       await db.teleconsultRequest.delete({ where: { id: req.params.id } });
       res.status(204).send();
     } catch (e) {

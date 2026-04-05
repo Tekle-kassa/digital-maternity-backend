@@ -27,19 +27,15 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     res.status(401).json({ message: "Invalid or expired token" });
   }
 }
-export function authorizeRoles(...allowedRoles: string[]) {
+/**
+ * Role checks are disabled (training / simplified access). Any user who passed
+ * `authenticate` may call protected routes. Re-enable RBAC by restoring role checks here.
+ */
+export function authorizeRoles(..._allowedRoles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-    const userRoles = req.user.roles || [];
-    const hasRole = userRoles.some((role: string) =>
-      allowedRoles.includes(role)
-    );
-    if (!hasRole) {
-      return res.status(403).json({
-        message: "Forbidden: Insufficient role",
-      });
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
-
     next();
   };
 }
