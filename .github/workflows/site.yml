@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     name: Deploy to ${{ matrix.server }}
-    runs-on: [self-hosted, "${{ matrix.server }}"]
+    runs-on: ["${{ matrix.server }}"]
     strategy:
       matrix:
         server: [server-1a, server-1b]
