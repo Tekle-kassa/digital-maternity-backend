@@ -11,6 +11,9 @@ const options: swaggerJsdoc.Options = {
         "**Base path:** `/api/v1`\n\n" +
         "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
         "**Legacy aliases:** `/patient` (includes `POST /register-client` + DMP patient routes), `/visit`, `/ultrasound`, `/analytics` (merged legacy + DMP analytics).\n\n" +
+        "**Facility sync — for whoever deploys:** Same app image can run as **central (cloud)** or **local (facility)**; configure with environment variables only (never commit secret values).\n\n" +
+        "- **Central:** Set `SYNC_INGEST_SECRET` in the cloud environment. The URL that **accepts uploads** from facilities is: `POST {your public API base}/api/v1/sync/ingest`. Callers send header `X-Sync-Ingest-Key` with the same value as `SYNC_INGEST_SECRET`.\n\n" +
+        "- **Local (facility):** Set `CENTRAL_SYNC_URL` to the central API base URL (no path), `CENTRAL_SYNC_SECRET` to the **same** value as central `SYNC_INGEST_SECRET`, and `FACILITY_ID`. To send data up, use either JWT **queue** routes (`POST /sync/enqueue`, `POST /sync/trigger`, …) or **cron** routes (`/sync/cron/{slug}/summary|push`) with header `X-Sync-Cron-Secret` matching local `SYNC_CRON_SECRET`.\n\n" +
         '**Seeding:** `POST /api/v1/admin/seed` with `X-Seed-Secret` (if `SEED_SECRET` is set) or ADMIN JWT. Body: `{ "scope": "roles" | "demo" | "all" }`.',
       contact: {
         name: "API Support",
@@ -24,6 +27,13 @@ const options: swaggerJsdoc.Options = {
       {
         url: "https://api.example.com",
         description: "Production server",
+      },
+    ],
+    tags: [
+      {
+        name: "Sync",
+        description:
+          "Facility ↔ central sync. **Central** exposes `POST /sync/ingest` (receives batches). **Local** pushes via JWT or cron; secrets come from environment variables at deploy time.",
       },
     ],
     components: {
@@ -123,6 +133,117 @@ const options: swaggerJsdoc.Options = {
                 details: { type: "object", additionalProperties: true },
               },
             },
+          },
+        },
+        SyncIngestItem: {
+          type: "object",
+          required: ["id", "entityType", "entityId", "action"],
+          properties: {
+            id: {
+              type: "string",
+              format: "uuid",
+              description: "Idempotent key from the local outbox (queue item id or generated UUID).",
+            },
+            entityType: {
+              type: "string",
+              description: "Prisma model name, e.g. Patient, Visit.",
+            },
+            entityId: { type: "string" },
+            action: { type: "string", example: "create" },
+            payload: { description: "Entity snapshot or mutation payload", nullable: true },
+            createdAt: { type: "string", format: "date-time" },
+          },
+        },
+        SyncIngestBatchRequest: {
+          type: "object",
+          required: ["facilityId", "items"],
+          properties: {
+            facilityId: { type: "string", description: "Local `FACILITY_ID`" },
+            clinicId: { type: "string" },
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/SyncIngestItem" },
+            },
+          },
+        },
+        SyncIngestSuccessData: {
+          type: "object",
+          properties: {
+            accepted: { type: "integer", description: "New mutations stored on central" },
+            duplicates: {
+              type: "integer",
+              description: "Skipped (same facilityId + source queue id already ingested)",
+            },
+          },
+        },
+        SyncCronSlug: {
+          type: "string",
+          enum: [
+            "patients",
+            "users",
+            "visits",
+            "ultrasounds",
+            "gbv-reports",
+            "gbv-screenings",
+            "srh-registrations",
+            "referrals",
+            "pregnancies",
+            "anc-records",
+            "deliveries",
+            "newborns",
+            "pnc-visits",
+            "conversations",
+            "messages",
+            "teleconsult-requests",
+          ],
+          description: "URL segment; response includes matching `entityType` (Prisma model name).",
+        },
+        SyncCronSummaryData: {
+          type: "object",
+          properties: {
+            entityType: { type: "string", example: "Patient" },
+            slug: { $ref: "#/components/schemas/SyncCronSlug" },
+            pending: { type: "integer" },
+            synced: { type: "integer" },
+            conflict: { type: "integer" },
+            maxPendingChangeAt: { type: "string", format: "date-time", nullable: true },
+            maxTableChangeAt: { type: "string", format: "date-time", nullable: true },
+          },
+        },
+        SyncCronPushSuccessData: {
+          type: "object",
+          properties: {
+            entityType: { type: "string" },
+            slug: { type: "string" },
+            itemCount: { type: "integer" },
+            entityTypesTouched: { type: "array", items: { type: "string" } },
+            central: {
+              type: "object",
+              properties: {
+                accepted: { type: "integer" },
+                duplicates: { type: "integer" },
+              },
+            },
+            error: { type: "string", description: "Present when push failed (HTTP 400)" },
+          },
+        },
+        SyncEnqueueBody: {
+          type: "object",
+          required: ["entityType", "entityId", "action"],
+          properties: {
+            entityType: { type: "string" },
+            entityId: { type: "string", format: "uuid" },
+            action: { type: "string", enum: ["create", "update", "delete"] },
+            payload: {},
+          },
+        },
+        SyncTriggerSuccessData: {
+          type: "object",
+          properties: {
+            pushed: { type: "integer" },
+            accepted: { type: "integer" },
+            duplicates: { type: "integer" },
+            message: { type: "string" },
           },
         },
       },

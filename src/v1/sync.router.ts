@@ -4,9 +4,41 @@ import { authenticate, AuthRequest } from "../middleware/authMiddleware";
 import { sendData, sendError } from "./helpers";
 import { z } from "zod";
 import config from "../config";
-import { enqueueSyncItem, ingestBatchFromLocal, pushPendingToCentral } from "./sync.service";
+import {
+  enqueueSyncItem,
+  ingestBatchFromLocal,
+  pushPendingToCentral,
+} from "./sync.service";
+import {
+  CRON_SLUG_BY_ENTITY,
+  ENTITY_TYPES_FOR_CRON,
+  getEntitySyncCronSummaryFor,
+  pushPendingEntityTableToCentral,
+  type CronEntityType,
+} from "./sync-cron.service";
 
 const router = Router();
+
+function syncCronAuth(req: Request, res: Response, next: NextFunction) {
+  if (!config.syncCronSecret) {
+    return sendError(
+      res,
+      "NOT_CONFIGURED",
+      "Entity sync cron is disabled (set SYNC_CRON_SECRET)",
+      503,
+    );
+  }
+  const key = req.headers["x-sync-cron-secret"];
+  if (typeof key !== "string" || key !== config.syncCronSecret) {
+    return sendError(
+      res,
+      "UNAUTHORIZED",
+      "Invalid or missing X-Sync-Cron-Secret header",
+      401,
+    );
+  }
+  next();
+}
 
 function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
   if (!config.syncIngestSecret) {
@@ -14,12 +46,12 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
       res,
       "NOT_CONFIGURED",
       "Sync ingest is disabled (set SYNC_INGEST_SECRET on the central server)",
-      503
+      503,
     );
   }
   const key = req.headers["x-sync-ingest-key"];
   if (typeof key !== "string" || key !== config.syncIngestSecret) {
-    return sendError(res, "UNAUTHORIZED", "Invalid sync ingest key", 401);
+    return sendError(res, "UNAUTHORIZED", "Invalid or missing ingest authorization", 401);
   }
   next();
 }
@@ -28,63 +60,216 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  * @swagger
  * /api/v1/sync/ingest:
  *   post:
- *     summary: Central ingest (local server pushes batches here)
+ *     summary: Receive sync batches from local (central server)
  *     description: |
- *       **Central deployment only.** Authenticate with header `X-Sync-Ingest-Key` (same value as `SYNC_INGEST_SECRET`).
- *       Local server uses `SYNC_INGEST_SECRET` as `CENTRAL_SYNC_SECRET` when calling outbound.
- *     tags: [DMP]
+ *       **This is the only endpoint that accepts uploaded batches on the central (cloud) deployment.** Enable by setting environment variable SYNC_INGEST_SECRET on the central server (value is never stored in this repo).
+ *
+ *       Facility servers POST to POST /api/v1/sync/ingest on the central BASE URL (their local CENTRAL_SYNC_URL plus this path). Header X-Sync-Ingest-Key must match central SYNC_INGEST_SECRET and local CENTRAL_SYNC_SECRET.
+ *
+ *       Idempotency: duplicate item ids per facility are skipped (duplicates counted in response).
+ *     tags: [Sync]
  *     security: []
  *     parameters:
  *       - in: header
  *         name: X-Sync-Ingest-Key
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_INGEST_SECRET (set only in deployment).
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [facilityId, items]
+ *             $ref: '#/components/schemas/SyncIngestBatchRequest'
  *     responses:
  *       200:
- *         description: accepted and duplicate counts
+ *         description: Success — response body contains data.accepted and data.duplicates
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncIngestSuccessData'
  *       401:
- *         description: Invalid key
+ *         description: Invalid or missing X-Sync-Ingest-Key header
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DmpError'
  *       503:
- *         description: Ingest not configured
+ *         description: Ingest disabled — SYNC_INGEST_SECRET not set on this server
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DmpError'
  */
-router.post("/ingest", syncIngestAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const body = z
-      .object({
-        facilityId: z.string().min(1),
-        clinicId: z.string().optional(),
-        items: z.array(
-          z.object({
-            id: z.string().uuid(),
-            entityType: z.string(),
-            entityId: z.string(),
-            action: z.string(),
-            payload: z.unknown().optional(),
-            createdAt: z.string().optional(),
+/**
+ * @swagger
+ * /api/v1/sync/cron/{slug}/summary:
+ *   get:
+ *     summary: Row-level sync counts for one entity table (local + cron secret)
+ *     description: |
+ *       **Local facility server** (or a scheduler), not the central ingest URL. Requires SYNC_CRON_SECRET in the server environment.
+ *
+ *       Path slug is one of the enum values (e.g. patients maps to Prisma model Patient).
+ *     tags: [Sync]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           $ref: '#/components/schemas/SyncCronSlug'
+ *       - in: header
+ *         name: X-Sync-Cron-Secret
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
+ *     responses:
+ *       200:
+ *         description: Success — see SyncCronSummaryData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncCronSummaryData'
+ *       401:
+ *         description: Invalid X-Sync-Cron-Secret header
+ *       503:
+ *         description: Cron sync disabled — SYNC_CRON_SECRET not set
+ * /api/v1/sync/cron/{slug}/push:
+ *   post:
+ *     summary: Push pending rows for one table to central ingest (local + cron secret)
+ *     description: |
+ *       Sends a batch to the central POST /api/v1/sync/ingest URL using local CENTRAL_SYNC_URL, CENTRAL_SYNC_SECRET, FACILITY_ID.
+ *     tags: [Sync]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           $ref: '#/components/schemas/SyncCronSlug'
+ *       - in: header
+ *         name: X-Sync-Cron-Secret
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               limit:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 25
+ *     responses:
+ *       200:
+ *         description: Success — see SyncCronPushSuccessData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncCronPushSuccessData'
+ *       400:
+ *         description: Central not configured or ingest failed
+ *       401:
+ *         description: Invalid X-Sync-Cron-Secret header
+ *       503:
+ *         description: Cron sync disabled
+ */
+for (const entityType of ENTITY_TYPES_FOR_CRON) {
+  const slug = CRON_SLUG_BY_ENTITY[entityType as CronEntityType];
+  const base = `/cron/${slug}`;
+
+  router.get(
+    `${base}/summary`,
+    syncCronAuth,
+    async (_req: Request, res: Response, next: NextFunction) => {
+      try {
+        const counts = await getEntitySyncCronSummaryFor(
+          entityType as CronEntityType,
+        );
+        sendData(res, { entityType, slug, ...counts });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+
+  router.post(
+    `${base}/push`,
+    syncCronAuth,
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const body = z
+          .object({
+            limit: z.coerce.number().int().min(1).max(100).optional(),
           })
-        ),
-      })
-      .parse(req.body);
-    const result = await ingestBatchFromLocal(body);
-    sendData(res, result);
-  } catch (e) {
-    next(e);
-  }
-});
+          .parse(req.body ?? {});
+        const result = await pushPendingEntityTableToCentral(
+          entityType as CronEntityType,
+          body.limit,
+        );
+        if (result.error) {
+          return sendError(res, "SYNC_FAILED", result.error, 400);
+        }
+        sendData(res, { entityType, slug, ...result });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+}
+
+router.post(
+  "/ingest",
+  syncIngestAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = z
+        .object({
+          facilityId: z.string().min(1),
+          clinicId: z.string().optional(),
+          items: z.array(
+            z.object({
+              id: z.string().uuid(),
+              entityType: z.string(),
+              entityId: z.string(),
+              action: z.string(),
+              payload: z.unknown().optional(),
+              createdAt: z.string().optional(),
+            }),
+          ),
+        })
+        .parse(req.body);
+      const result = await ingestBatchFromLocal(body);
+      sendData(res, result);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @swagger
  * /api/v1/sync/enqueue:
  *   post:
- *     summary: Add a mutation to the local outbox (to be pushed to central)
- *     tags: [DMP]
+ *     summary: Add a mutation to the local outbox (JWT; local server)
+ *     description: |
+ *       Pushes to central later via `POST /api/v1/sync/trigger` (or your own process calling ingest). Central does not call this endpoint.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -92,40 +277,44 @@ router.post("/ingest", syncIngestAuth, async (req: Request, res: Response, next:
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [entityType, entityId, action]
+ *             $ref: '#/components/schemas/SyncEnqueueBody'
  *     responses:
  *       201:
- *         description: Queue item created
+ *         description: Created — data includes id and status of queued item
  */
-router.post("/enqueue", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const body = z
-      .object({
-        entityType: z.string().min(1),
-        entityId: z.string().uuid(),
-        action: z.enum(["create", "update", "delete"]),
-        payload: z.unknown().optional(),
-      })
-      .parse(req.body);
-    const row = await enqueueSyncItem(body);
-    sendData(res, { id: row.id, status: row.status }, 201);
-  } catch (e) {
-    next(e);
-  }
-});
+router.post(
+  "/enqueue",
+  authenticate,
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const body = z
+        .object({
+          entityType: z.string().min(1),
+          entityId: z.string().uuid(),
+          action: z.enum(["create", "update", "delete"]),
+          payload: z.unknown().optional(),
+        })
+        .parse(req.body);
+      const row = await enqueueSyncItem(body);
+      sendData(res, { id: row.id, status: row.status }, 201);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 /**
  * @swagger
  * /api/v1/sync/status:
  *   get:
  *     summary: Sync status for current user (last sync, pending, conflicts)
- *     tags: [DMP]
+ *     description: Local facility UI; JWT.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: "{ data }"
+ *         description: "{ data: lastSyncTime, pendingUploads, pendingDownloads, conflicts, … }"
  */
 router.get(
   "/status",
@@ -141,7 +330,8 @@ router.get(
         db.syncConflict.count({ where: { resolved: false } }),
       ]);
       sendData(res, {
-        lastSyncTime: last?.syncTimestamp.toISOString() ?? new Date().toISOString(),
+        lastSyncTime:
+          last?.syncTimestamp.toISOString() ?? new Date().toISOString(),
         pendingUploads,
         pendingDownloads: 0,
         conflicts,
@@ -152,42 +342,52 @@ router.get(
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
  * @swagger
  * /api/v1/sync/trigger:
  *   post:
- *     summary: Push pending outbox queue to the central server (Option B)
+ *     summary: Push pending `SyncQueueItem` rows to central ingest (JWT; local server)
  *     description: |
- *       Requires `CENTRAL_SYNC_URL`, `FACILITY_ID`, and shared secret on the **local** server.
- *       Drains up to `limit` pending `SyncQueueItem` rows and POSTs them to central `/api/v1/sync/ingest`.
- *     tags: [DMP]
+ *       Requires on **local**: `CENTRAL_SYNC_URL`, `FACILITY_ID`, `CENTRAL_SYNC_SECRET` (same value as central `SYNC_INGEST_SECRET`).
+ *       Sends up to `limit` pending rows to **`POST /api/v1/sync/ingest`** on the central host.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 50, maximum: 100 }
+ *         schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
  *     responses:
  *       200:
- *         description: Push result
+ *         description: Success — see SyncTriggerSuccessData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncTriggerSuccessData'
  *       400:
- *         description: Central not configured or push failed
+ *         description: Not configured or central returned error
  */
 router.post(
   "/trigger",
   authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50));
+      const limit = Math.min(
+        100,
+        Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
+      );
       if (!config.centralSyncUrl) {
         return sendError(
           res,
           "NOT_CONFIGURED",
           "Local→central sync is not configured (set CENTRAL_SYNC_URL, FACILITY_ID, CENTRAL_SYNC_SECRET)",
-          400
+          400,
         );
       }
       const result = await pushPendingToCentral(req.user!.id, limit);
@@ -196,15 +396,15 @@ router.post(
       const msg = e instanceof Error ? e.message : "Sync failed";
       sendError(res, "SYNC_FAILED", msg, 400);
     }
-  }
+  },
 );
 
 /**
  * @swagger
  * /api/v1/sync/queue:
  *   get:
- *     summary: Pending sync queue items
- *     tags: [DMP]
+ *     summary: Pending sync queue items (local outbox; JWT)
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -230,12 +430,12 @@ router.get(
           status: i.status.toLowerCase(),
           timestamp: i.createdAt.toISOString(),
           progress: i.progress ?? undefined,
-        }))
+        })),
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -243,7 +443,7 @@ router.get(
  * /api/v1/sync/conflicts:
  *   get:
  *     summary: Unresolved sync conflicts
- *     tags: [DMP]
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -271,12 +471,12 @@ router.get(
           serverValue: c.serverValue,
           localTimestamp: c.localTimestamp.toISOString(),
           serverTimestamp: c.serverTimestamp.toISOString(),
-        }))
+        })),
       );
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 /**
@@ -284,7 +484,7 @@ router.get(
  * /api/v1/sync/conflicts/{id}/resolve:
  *   post:
  *     summary: Resolve a sync conflict
- *     tags: [DMP]
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -331,7 +531,7 @@ router.post(
     } catch (e) {
       next(e);
     }
-  }
+  },
 );
 
 export default router;

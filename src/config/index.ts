@@ -33,4 +33,11 @@ export default {
    * If unset, ingest is disabled (503).
    */
   syncIngestSecret: process.env.SYNC_INGEST_SECRET || process.env.CENTRAL_SYNC_SECRET || "",
+
+  /**
+   * Header `X-Sync-Cron-Secret` for GET/POST `/api/v1/sync/cron/*` (scheduler / edge cron, no JWT).
+   */
+  syncCronSecret: process.env.SYNC_CRON_SECRET || "",
+  /** Optional FK for `SyncLog` rows created by entity-row cron (defaults to oldest user). */
+  syncCronActingUserId: process.env.SYNC_CRON_ACTING_USER_ID || "",
 };
