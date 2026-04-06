@@ -67,8 +67,11 @@ function prismaDelegateName(entityType: string): string {
 
 function getDelegate(entityType: string) {
   const key = prismaDelegateName(entityType);
-  const d = (db as Record<string, { findMany: Function; updateMany: Function; count: Function }>)[key];
-  if (!d || typeof d.findMany !== "function") {
+  const d = (db as Record<
+    string,
+    { findMany: Function; updateMany: Function; count: Function; aggregate: Function }
+  >)[key];
+  if (!d || typeof d.findMany !== "function" || typeof d.aggregate !== "function") {
     throw new Error(`No Prisma delegate for entity type ${entityType}`);
   }
   return d;
@@ -89,16 +92,46 @@ export type EntitySyncCounts = {
   pending: number;
   synced: number;
   conflict: number;
+  /**
+   * Latest change time among pending rows (`updatedAt`, or `createdAt` for `Message`).
+   * Use with the same field from another environment to see which side has newer unsynced work.
+   */
+  maxPendingChangeAt: string | null;
+  /**
+   * Latest change time in the whole table (same field as push ordering uses for that model).
+   */
+  maxTableChangeAt: string | null;
 };
 
 export async function getEntitySyncCronSummaryFor(entityType: CronEntityType): Promise<EntitySyncCounts> {
   const del = getDelegate(entityType);
-  const [pending, synced, conflict] = await Promise.all([
+  const isMessage = entityType === "Message";
+  const [pending, synced, conflict, pendingAgg, tableAgg] = await Promise.all([
     del.count({ where: { syncStatus: "pending" } }),
     del.count({ where: { syncStatus: "synced" } }),
     del.count({ where: { syncStatus: "conflict" } }),
+    isMessage
+      ? del.aggregate({
+          where: { syncStatus: "pending" },
+          _max: { createdAt: true },
+        })
+      : del.aggregate({
+          where: { syncStatus: "pending" },
+          _max: { updatedAt: true },
+        }),
+    isMessage
+      ? del.aggregate({ _max: { createdAt: true } })
+      : del.aggregate({ _max: { updatedAt: true } }),
   ]);
-  return { pending, synced, conflict };
+  const pendingTs = isMessage ? pendingAgg._max.createdAt : pendingAgg._max.updatedAt;
+  const tableTs = isMessage ? tableAgg._max.createdAt : tableAgg._max.updatedAt;
+  return {
+    pending,
+    synced,
+    conflict,
+    maxPendingChangeAt: pendingTs instanceof Date ? pendingTs.toISOString() : null,
+    maxTableChangeAt: tableTs instanceof Date ? tableTs.toISOString() : null,
+  };
 }
 
 type RowRef = { entityType: CronEntityType; entityId: string };

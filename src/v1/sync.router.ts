@@ -51,7 +51,7 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
   }
   const key = req.headers["x-sync-ingest-key"];
   if (typeof key !== "string" || key !== config.syncIngestSecret) {
-    return sendError(res, "UNAUTHORIZED", "Invalid sync ingest key", 401);
+    return sendError(res, "UNAUTHORIZED", "Invalid or missing ingest authorization", 401);
   }
   next();
 }
@@ -60,72 +60,135 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  * @swagger
  * /api/v1/sync/ingest:
  *   post:
- *     summary: Central ingest (local server pushes batches here)
+ *     summary: Receive sync batches from local (central server)
  *     description: |
- *       **Central deployment only.** Authenticate with header `X-Sync-Ingest-Key` (same value as `SYNC_INGEST_SECRET`).
- *       Local server uses `SYNC_INGEST_SECRET` as `CENTRAL_SYNC_SECRET` when calling outbound.
- *     tags: [DMP]
+ *       **This is the only endpoint that accepts uploaded batches on the central (cloud) deployment.** Enable by setting environment variable SYNC_INGEST_SECRET on the central server (value is never stored in this repo).
+ *
+ *       Facility servers POST to POST /api/v1/sync/ingest on the central BASE URL (their local CENTRAL_SYNC_URL plus this path). Header X-Sync-Ingest-Key must match central SYNC_INGEST_SECRET and local CENTRAL_SYNC_SECRET.
+ *
+ *       Idempotency: duplicate item ids per facility are skipped (duplicates counted in response).
+ *     tags: [Sync]
  *     security: []
  *     parameters:
  *       - in: header
  *         name: X-Sync-Ingest-Key
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_INGEST_SECRET (set only in deployment).
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [facilityId, items]
+ *             $ref: '#/components/schemas/SyncIngestBatchRequest'
  *     responses:
  *       200:
- *         description: accepted and duplicate counts
+ *         description: Success — response body contains data.accepted and data.duplicates
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncIngestSuccessData'
  *       401:
- *         description: Invalid key
+ *         description: Invalid or missing X-Sync-Ingest-Key header
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DmpError'
  *       503:
- *         description: Ingest not configured
+ *         description: Ingest disabled — SYNC_INGEST_SECRET not set on this server
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DmpError'
  */
 /**
  * @swagger
- * /api/v1/sync/cron/patients/summary:
+ * /api/v1/sync/cron/{slug}/summary:
  *   get:
- *     summary: Row sync counts for one table (cron)
- *     tags: [DMP]
+ *     summary: Row-level sync counts for one entity table (local + cron secret)
+ *     description: |
+ *       **Local facility server** (or a scheduler), not the central ingest URL. Requires SYNC_CRON_SECRET in the server environment.
+ *
+ *       Path slug is one of the enum values (e.g. patients maps to Prisma model Patient).
+ *     tags: [Sync]
  *     security: []
  *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           $ref: '#/components/schemas/SyncCronSlug'
  *       - in: header
  *         name: X-Sync-Cron-Secret
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
  *     responses:
- *       200: { description: "{ entityType, slug, pending, synced, conflict }" }
- * /api/v1/sync/cron/patients/push:
+ *       200:
+ *         description: Success — see SyncCronSummaryData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncCronSummaryData'
+ *       401:
+ *         description: Invalid X-Sync-Cron-Secret header
+ *       503:
+ *         description: Cron sync disabled — SYNC_CRON_SECRET not set
+ * /api/v1/sync/cron/{slug}/push:
  *   post:
- *     summary: Push pending rows for one table to central (cron)
- *     tags: [DMP]
+ *     summary: Push pending rows for one table to central ingest (local + cron secret)
+ *     description: |
+ *       Sends a batch to the central POST /api/v1/sync/ingest URL using local CENTRAL_SYNC_URL, CENTRAL_SYNC_SECRET, FACILITY_ID.
+ *     tags: [Sync]
  *     security: []
  *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         schema:
+ *           $ref: '#/components/schemas/SyncCronSlug'
  *       - in: header
  *         name: X-Sync-Cron-Secret
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
+ *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
  *     requestBody:
  *       content:
  *         application/json:
  *           schema:
  *             type: object
  *             properties:
- *               limit: { type: integer, default: 25, maximum: 100 }
+ *               limit:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 25
  *     responses:
- *       200: { description: push result }
- *       400: { description: sync failed }
- *
- * Slugs — patients, users, visits, ultrasounds, gbv-reports, gbv-screenings, srh-registrations,
- * referrals, pregnancies, anc-records, deliveries, newborns, pnc-visits, conversations, messages,
- * teleconsult-requests. Response `entityType` is the Prisma model name.
+ *       200:
+ *         description: Success — see SyncCronPushSuccessData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncCronPushSuccessData'
+ *       400:
+ *         description: Central not configured or ingest failed
+ *       401:
+ *         description: Invalid X-Sync-Cron-Secret header
+ *       503:
+ *         description: Cron sync disabled
  */
-console.log("asd");
 for (const entityType of ENTITY_TYPES_FOR_CRON) {
   const slug = CRON_SLUG_BY_ENTITY[entityType as CronEntityType];
   const base = `/cron/${slug}`;
@@ -203,8 +266,10 @@ router.post(
  * @swagger
  * /api/v1/sync/enqueue:
  *   post:
- *     summary: Add a mutation to the local outbox (to be pushed to central)
- *     tags: [DMP]
+ *     summary: Add a mutation to the local outbox (JWT; local server)
+ *     description: |
+ *       Pushes to central later via `POST /api/v1/sync/trigger` (or your own process calling ingest). Central does not call this endpoint.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -212,11 +277,10 @@ router.post(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [entityType, entityId, action]
+ *             $ref: '#/components/schemas/SyncEnqueueBody'
  *     responses:
  *       201:
- *         description: Queue item created
+ *         description: Created — data includes id and status of queued item
  */
 router.post(
   "/enqueue",
@@ -244,12 +308,13 @@ router.post(
  * /api/v1/sync/status:
  *   get:
  *     summary: Sync status for current user (last sync, pending, conflicts)
- *     tags: [DMP]
+ *     description: Local facility UI; JWT.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: "{ data }"
+ *         description: "{ data: lastSyncTime, pendingUploads, pendingDownloads, conflicts, … }"
  */
 router.get(
   "/status",
@@ -284,22 +349,29 @@ router.get(
  * @swagger
  * /api/v1/sync/trigger:
  *   post:
- *     summary: Push pending outbox queue to the central server (Option B)
+ *     summary: Push pending `SyncQueueItem` rows to central ingest (JWT; local server)
  *     description: |
- *       Requires `CENTRAL_SYNC_URL`, `FACILITY_ID`, and shared secret on the **local** server.
- *       Drains up to `limit` pending `SyncQueueItem` rows and POSTs them to central `/api/v1/sync/ingest`.
- *     tags: [DMP]
+ *       Requires on **local**: `CENTRAL_SYNC_URL`, `FACILITY_ID`, `CENTRAL_SYNC_SECRET` (same value as central `SYNC_INGEST_SECRET`).
+ *       Sends up to `limit` pending rows to **`POST /api/v1/sync/ingest`** on the central host.
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 50, maximum: 100 }
+ *         schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
  *     responses:
  *       200:
- *         description: Push result
+ *         description: Success — see SyncTriggerSuccessData schema
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   $ref: '#/components/schemas/SyncTriggerSuccessData'
  *       400:
- *         description: Central not configured or push failed
+ *         description: Not configured or central returned error
  */
 router.post(
   "/trigger",
@@ -331,8 +403,8 @@ router.post(
  * @swagger
  * /api/v1/sync/queue:
  *   get:
- *     summary: Pending sync queue items
- *     tags: [DMP]
+ *     summary: Pending sync queue items (local outbox; JWT)
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -371,7 +443,7 @@ router.get(
  * /api/v1/sync/conflicts:
  *   get:
  *     summary: Unresolved sync conflicts
- *     tags: [DMP]
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -412,7 +484,7 @@ router.get(
  * /api/v1/sync/conflicts/{id}/resolve:
  *   post:
  *     summary: Resolve a sync conflict
- *     tags: [DMP]
+ *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
  *     parameters:
