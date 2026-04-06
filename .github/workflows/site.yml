@@ -1,0 +1,44 @@
+name: Deploy Backend on site
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  
+jobs:
+  deploy:
+    name: Deploy to ${{ matrix.server }}
+    runs-on: [self-hosted, "${{ matrix.server }}"]
+    strategy:
+      matrix:
+        server: [server-1a, server-1b]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: /opt/dmp/api
+          clean: false
+
+      - name: Write environment file
+        run: |
+          echo "${{ secrets.ENV_BLOB }}" > /opt/dmp/api/.env
+          chmod 600 /opt/dmp/api/.env
+
+      - name: Install dependencies
+        working-directory: /opt/dmp/api
+        run: npm install
+
+      - name: Build
+        working-directory: /opt/dmp/api
+        run: npm run build
+
+      - name: Reload PM2
+        run: pm2 reload dmp-api --update-env
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f http://localhost:3000 || exit 1
