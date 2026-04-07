@@ -9,7 +9,11 @@ jobs:
     runs-on: [self-hosted, "${{ matrix.server }}"]
     strategy:
       matrix:
-        server: [server-1a, server-1b]
+        include:
+          - server: server-1a
+            env_secret: ENV_BLOB_SERVER_A
+          - server: server-1b
+            env_secret: ENV_BLOB_SERVER_B
       fail-fast: false
 
     steps:
@@ -20,7 +24,7 @@ jobs:
         run: rsync -a ./ /opt/dmp/api/
       - name: Write environment file
         run: |
-          echo "${{ secrets.ENV_BLOB }}" > /opt/dmp/api/.env
+          echo "${{ secrets[matrix.env_secret] }}" > /opt/dmp/api/.env
           chmod 600 /opt/dmp/api/.env
 
       - name: Install dependencies
