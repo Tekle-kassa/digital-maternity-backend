@@ -194,6 +194,57 @@ export type IngestBatchBody = {
   }>;
 };
 
+function prismaDelegateName(entityType: string): string {
+  return entityType.charAt(0).toLowerCase() + entityType.slice(1);
+}
+
+function getEntityDelegate(entityType: string) {
+  const key = prismaDelegateName(entityType);
+  const del = (db as Record<string, {
+    upsert: Function;
+    deleteMany: Function;
+  }>)[key];
+  if (!del || typeof del.upsert !== "function" || typeof del.deleteMany !== "function") {
+    throw new Error(`No Prisma delegate for entity type ${entityType}`);
+  }
+  return del;
+}
+
+function toEntityWriteData(payload: unknown, entityId: string): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Entity payload object is required for create/update ingest");
+  }
+  const obj = payload as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) continue;
+    // internal helper key used for logs/debug only (not in Prisma models)
+    if (k === "originalImageUrl") continue;
+    data[k] = v;
+  }
+  data.id = entityId;
+  return data;
+}
+
+async function applyEntityMutationToCloudTable(item: {
+  entityType: string;
+  entityId: string;
+  action: string;
+  payload?: unknown;
+}) {
+  const del = getEntityDelegate(item.entityType);
+  if (item.action === "delete") {
+    await del.deleteMany({ where: { id: item.entityId } });
+    return;
+  }
+  const writeData = toEntityWriteData(item.payload, item.entityId);
+  await del.upsert({
+    where: { id: item.entityId },
+    create: writeData,
+    update: writeData,
+  });
+}
+
 /**
  * For Ultrasound mutations, best-effort mirror media into this deployment's S3 and
  * rewrite payload.imageUrl to the mirrored URL. If anything fails, keep original payload.
@@ -229,6 +280,8 @@ async function maybeMirrorUltrasoundPayload(
 export async function ingestBatchFromLocal(body: IngestBatchBody) {
   let accepted = 0;
   let duplicates = 0;
+  let failed = 0;
+  const failures: Array<{ itemId: string; entityType: string; message: string }> = [];
 
   for (const item of body.items) {
     const existing = await db.ingestedSyncMutation.findFirst({
@@ -245,18 +298,32 @@ export async function ingestBatchFromLocal(body: IngestBatchBody) {
       item.entityType,
       item.payload
     );
-    await db.ingestedSyncMutation.create({
-      data: {
-        facilityId: body.facilityId,
-        sourceQueueItemId: item.id,
+    try {
+      await applyEntityMutationToCloudTable({
         entityType: item.entityType,
         entityId: item.entityId,
         action: item.action,
-        payload: payload === undefined ? undefined : (payload as object),
-      },
-    });
-    accepted += 1;
+        payload,
+      });
+      await db.ingestedSyncMutation.create({
+        data: {
+          facilityId: body.facilityId,
+          sourceQueueItemId: item.id,
+          entityType: item.entityType,
+          entityId: item.entityId,
+          action: item.action,
+          payload: payload === undefined ? undefined : (payload as object),
+        },
+      });
+      accepted += 1;
+    } catch (e) {
+      failed += 1;
+      const message = e instanceof Error ? e.message : "Apply failed";
+      if (failures.length < 20) {
+        failures.push({ itemId: item.id, entityType: item.entityType, message });
+      }
+    }
   }
 
-  return { accepted, duplicates };
+  return { accepted, duplicates, failed, failures };
 }

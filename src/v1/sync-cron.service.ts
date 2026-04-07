@@ -48,7 +48,9 @@ export const CRON_SLUG_BY_ENTITY: Record<CronEntityType, string> = {
 };
 
 const SLUG_TO_ENTITY = new Map<string, CronEntityType>(
-  (Object.entries(CRON_SLUG_BY_ENTITY) as [CronEntityType, string][]).map(([e, s]) => [s, e])
+  (Object.entries(CRON_SLUG_BY_ENTITY) as [CronEntityType, string][]).map(
+    ([e, s]) => [s, e],
+  ),
 );
 
 export function cronEntityTypeFromSlug(slug: string): CronEntityType | null {
@@ -67,19 +69,32 @@ function prismaDelegateName(entityType: string): string {
 
 function getDelegate(entityType: string) {
   const key = prismaDelegateName(entityType);
-  const d = (db as Record<
-    string,
-    { findMany: Function; updateMany: Function; count: Function; aggregate: Function }
-  >)[key];
-  if (!d || typeof d.findMany !== "function" || typeof d.aggregate !== "function") {
+  const d = (
+    db as Record<
+      string,
+      {
+        findMany: Function;
+        updateMany: Function;
+        count: Function;
+        aggregate: Function;
+      }
+    >
+  )[key];
+  if (
+    !d ||
+    typeof d.findMany !== "function" ||
+    typeof d.aggregate !== "function"
+  ) {
     throw new Error(`No Prisma delegate for entity type ${entityType}`);
   }
   return d;
 }
 
-function jsonSafePayload(row: Record<string, unknown>): Record<string, unknown> {
+function jsonSafePayload(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const raw = JSON.parse(
-    JSON.stringify(row, (_k, v) => (typeof v === "bigint" ? v.toString() : v))
+    JSON.stringify(row, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
   ) as Record<string, unknown>;
   if ("passwordHash" in raw) {
     const { passwordHash: _p, ...rest } = raw;
@@ -98,7 +113,9 @@ export type EntitySyncCounts = {
   maxTableChangeAt: string | null;
 };
 
-export async function getEntitySyncCronSummaryFor(entityType: CronEntityType): Promise<EntitySyncCounts> {
+export async function getEntitySyncCronSummaryFor(
+  entityType: CronEntityType,
+): Promise<EntitySyncCounts> {
   const del = getDelegate(entityType);
   const [pending, synced, conflict, pendingAgg, tableAgg] = await Promise.all([
     del.count({ where: { syncStatus: "pending" } }),
@@ -116,7 +133,8 @@ export async function getEntitySyncCronSummaryFor(entityType: CronEntityType): P
     pending,
     synced,
     conflict,
-    maxPendingChangeAt: pendingTs instanceof Date ? pendingTs.toISOString() : null,
+    maxPendingChangeAt:
+      pendingTs instanceof Date ? pendingTs.toISOString() : null,
     maxTableChangeAt: tableTs instanceof Date ? tableTs.toISOString() : null,
   };
 }
@@ -125,7 +143,11 @@ type RowRef = { entityType: CronEntityType; entityId: string };
 
 async function markRows(
   refs: RowRef[],
-  data: { syncStatus: string; syncedAt?: Date | null; syncError?: string | null }
+  data: {
+    syncStatus: string;
+    syncedAt?: Date | null;
+    syncError?: string | null;
+  },
 ): Promise<void> {
   const byType = new Map<CronEntityType, string[]>();
   for (const r of refs) {
@@ -154,15 +176,23 @@ export async function pushPendingEntityRowsToCentral(input: {
   const maxTotal = Math.min(500, Math.max(1, input.maxTotalItems ?? 200));
   const facilityId = config.facilityId;
   if (!config.centralSyncUrl) {
-    return { itemCount: 0, entityTypesTouched: [], error: "CENTRAL_SYNC_URL is not set" };
+    return {
+      itemCount: 0,
+      entityTypesTouched: [],
+      error: "CENTRAL_SYNC_URL is not set",
+    };
   }
   if (!facilityId) {
-    return { itemCount: 0, entityTypesTouched: [], error: "FACILITY_ID not set" };
+    return {
+      itemCount: 0,
+      entityTypesTouched: [],
+      error: "FACILITY_ID not set",
+    };
   }
 
-  const types = (input.entityTypes?.length ? input.entityTypes : [...ENTITY_TYPES_FOR_CRON]).filter((t) =>
-    ENTITY_SET.has(t)
-  );
+  const types = (
+    input.entityTypes?.length ? input.entityTypes : [...ENTITY_TYPES_FOR_CRON]
+  ).filter((t) => ENTITY_SET.has(t));
 
   const items: IngestBatchBody["items"] = [];
   const refs: RowRef[] = [];
@@ -179,7 +209,9 @@ export async function pushPendingEntityRowsToCentral(input: {
     })) as Array<{ id: string; createdAt: Date }>;
 
     for (const row of rows) {
-      const payload = jsonSafePayload(row as unknown as Record<string, unknown>);
+      const payload = jsonSafePayload(
+        row as unknown as Record<string, unknown>,
+      );
       const stamp = row.createdAt;
       items.push({
         id: randomUUID(),
@@ -208,7 +240,11 @@ export async function pushPendingEntityRowsToCentral(input: {
 
   if (!result.ok) {
     const msg = result.errorMessage || "Ingest failed";
-    await markRows(refs, { syncStatus: "pending", syncError: msg, syncedAt: null });
+    await markRows(refs, {
+      syncStatus: "pending",
+      syncError: msg,
+      syncedAt: null,
+    });
     return {
       itemCount: items.length,
       entityTypesTouched: [...touched],
@@ -216,11 +252,20 @@ export async function pushPendingEntityRowsToCentral(input: {
     };
   }
 
-  await markRows(refs, { syncStatus: "synced", syncError: null, syncedAt: new Date() });
+  await markRows(refs, {
+    syncStatus: "synced",
+    syncError: null,
+    syncedAt: new Date(),
+  });
 
   const logUserId =
     config.syncCronActingUserId ||
-    (await db.user.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } }))?.id;
+    (
+      await db.user.findFirst({
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      })
+    )?.id;
   if (logUserId) {
     await db.syncLog.create({
       data: {
@@ -241,7 +286,10 @@ export async function pushPendingEntityRowsToCentral(input: {
 }
 
 /** Push pending rows for a single Prisma model (one cron job per table). */
-export function pushPendingEntityTableToCentral(entityType: CronEntityType, limit?: number) {
+export function pushPendingEntityTableToCentral(
+  entityType: CronEntityType,
+  limit?: number,
+) {
   const lim = Math.min(100, Math.max(1, limit ?? 25));
   return pushPendingEntityRowsToCentral({
     entityTypes: [entityType],
