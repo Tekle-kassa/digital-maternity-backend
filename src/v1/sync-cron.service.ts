@@ -92,39 +92,26 @@ export type EntitySyncCounts = {
   pending: number;
   synced: number;
   conflict: number;
-  /**
-   * Latest change time among pending rows (`updatedAt`, or `createdAt` for `Message`).
-   * Use with the same field from another environment to see which side has newer unsynced work.
-   */
+  /** Latest `createdAt` among pending rows. */
   maxPendingChangeAt: string | null;
-  /**
-   * Latest change time in the whole table (same field as push ordering uses for that model).
-   */
+  /** Latest `createdAt` in the whole table. */
   maxTableChangeAt: string | null;
 };
 
 export async function getEntitySyncCronSummaryFor(entityType: CronEntityType): Promise<EntitySyncCounts> {
   const del = getDelegate(entityType);
-  const isMessage = entityType === "Message";
   const [pending, synced, conflict, pendingAgg, tableAgg] = await Promise.all([
     del.count({ where: { syncStatus: "pending" } }),
     del.count({ where: { syncStatus: "synced" } }),
     del.count({ where: { syncStatus: "conflict" } }),
-    isMessage
-      ? del.aggregate({
-          where: { syncStatus: "pending" },
-          _max: { createdAt: true },
-        })
-      : del.aggregate({
-          where: { syncStatus: "pending" },
-          _max: { updatedAt: true },
-        }),
-    isMessage
-      ? del.aggregate({ _max: { createdAt: true } })
-      : del.aggregate({ _max: { updatedAt: true } }),
+    del.aggregate({
+      where: { syncStatus: "pending" },
+      _max: { createdAt: true },
+    }),
+    del.aggregate({ _max: { createdAt: true } }),
   ]);
-  const pendingTs = isMessage ? pendingAgg._max.createdAt : pendingAgg._max.updatedAt;
-  const tableTs = isMessage ? tableAgg._max.createdAt : tableAgg._max.updatedAt;
+  const pendingTs = pendingAgg._max.createdAt;
+  const tableTs = tableAgg._max.createdAt;
   return {
     pending,
     synced,
@@ -166,8 +153,8 @@ export async function pushPendingEntityRowsToCentral(input: {
   const limitPerType = Math.min(100, Math.max(1, input.limitPerType ?? 25));
   const maxTotal = Math.min(500, Math.max(1, input.maxTotalItems ?? 200));
   const facilityId = config.facilityId;
-  if (!config.centralSyncUrl || !config.centralSyncSecret) {
-    return { itemCount: 0, entityTypesTouched: [], error: "CENTRAL_SYNC_URL / CENTRAL_SYNC_SECRET not set" };
+  if (!config.centralSyncUrl) {
+    return { itemCount: 0, entityTypesTouched: [], error: "CENTRAL_SYNC_URL is not set" };
   }
   if (!facilityId) {
     return { itemCount: 0, entityTypesTouched: [], error: "FACILITY_ID not set" };
@@ -185,16 +172,15 @@ export async function pushPendingEntityRowsToCentral(input: {
     if (items.length >= maxTotal) break;
     const take = Math.min(limitPerType, maxTotal - items.length);
     const del = getDelegate(entityType);
-    const orderBy = entityType === "Message" ? { createdAt: "asc" as const } : { updatedAt: "asc" as const };
     const rows = (await del.findMany({
       where: { syncStatus: "pending" },
-      orderBy,
+      orderBy: { createdAt: "asc" },
       take,
-    })) as Array<{ id: string; updatedAt?: Date; createdAt?: Date }>;
+    })) as Array<{ id: string; createdAt: Date }>;
 
     for (const row of rows) {
       const payload = jsonSafePayload(row as unknown as Record<string, unknown>);
-      const stamp = row.updatedAt ?? row.createdAt;
+      const stamp = row.createdAt;
       items.push({
         id: randomUUID(),
         entityType,

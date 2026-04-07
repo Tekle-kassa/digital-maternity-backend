@@ -48,6 +48,8 @@ export function mapPatientToApi(p: {
   emergencyPhone: string | null;
   createdAt: Date;
   idNumber?: string | null;
+  /** Row sync state (local→central); omitted in some callers defaults to pending */
+  syncStatus?: "pending" | "synced" | "conflict";
 }) {
   return {
     id: p.id,
@@ -69,7 +71,7 @@ export function mapPatientToApi(p: {
     registeredAt: p.createdAt.toISOString(),
     assignedMidwife: "",
     assignedMidwifeId: "",
-    syncStatus: "synced" as const,
+    syncStatus: p.syncStatus ?? "pending",
     clinicId: "",
     clinicName: "",
   };

@@ -18,26 +18,18 @@ export default {
   seedSecret: process.env.SEED_SECRET || "",
 
   /**
-   * Local facility server (offline-first): push outbox to central when online.
-   * Set CENTRAL_SYNC_URL on the local deployment only.
+   * Local facility: central API origin only (no trailing slash, no `/api` suffix — client adds `/api/v1/sync/ingest`).
+   * Default: production cloud API.
    */
-  centralSyncUrl: (process.env.CENTRAL_SYNC_URL || "").replace(/\/$/, ""),
-  /** Shared secret: local sends as X-Sync-Ingest-Key; central validates with syncIngestSecret (same value). */
-  centralSyncSecret: process.env.CENTRAL_SYNC_SECRET || process.env.SYNC_INGEST_SECRET || "",
+  centralSyncUrl: (
+    process.env.CENTRAL_SYNC_URL || "https://api.dmp.sofoniasayele.com"
+  ).replace(/\/$/, ""),
+  /** Optional. If set, outbound POST /ingest includes header X-Sync-Ingest-Key. */
+  centralSyncSecret:
+    process.env.CENTRAL_SYNC_SECRET || process.env.SYNC_INGEST_SECRET || "",
   /** Stable id for this facility (e.g. clinic UUID) — sent with each batch to central. */
-  facilityId: process.env.FACILITY_ID || "",
+  facilityId: process.env.FACILITY_ID || "asdasd",
   facilityClinicId: process.env.FACILITY_CLINIC_ID || "",
-
-  /**
-   * Central server only: require this header on POST /api/v1/sync/ingest.
-   * If unset, ingest is disabled (503).
-   */
-  syncIngestSecret: process.env.SYNC_INGEST_SECRET || process.env.CENTRAL_SYNC_SECRET || "",
-
-  /**
-   * Header `X-Sync-Cron-Secret` for GET/POST `/api/v1/sync/cron/*` (scheduler / edge cron, no JWT).
-   */
-  syncCronSecret: process.env.SYNC_CRON_SECRET || "",
   /** Optional FK for `SyncLog` rows created by entity-row cron (defaults to oldest user). */
   syncCronActingUserId: process.env.SYNC_CRON_ACTING_USER_ID || "",
 };

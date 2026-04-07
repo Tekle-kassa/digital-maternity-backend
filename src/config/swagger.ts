@@ -11,9 +11,7 @@ const options: swaggerJsdoc.Options = {
         "**Base path:** `/api/v1`\n\n" +
         "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
         "**Legacy aliases:** `/patient` (includes `POST /register-client` + DMP patient routes), `/visit`, `/ultrasound`, `/analytics` (merged legacy + DMP analytics).\n\n" +
-        "**Facility sync — for whoever deploys:** Same app image can run as **central (cloud)** or **local (facility)**; configure with environment variables only (never commit secret values).\n\n" +
-        "- **Central:** Set `SYNC_INGEST_SECRET` in the cloud environment. The URL that **accepts uploads** from facilities is: `POST {your public API base}/api/v1/sync/ingest`. Callers send header `X-Sync-Ingest-Key` with the same value as `SYNC_INGEST_SECRET`.\n\n" +
-        "- **Local (facility):** Set `CENTRAL_SYNC_URL` to the central API base URL (no path), `CENTRAL_SYNC_SECRET` to the **same** value as central `SYNC_INGEST_SECRET`, and `FACILITY_ID`. To send data up, use either JWT **queue** routes (`POST /sync/enqueue`, `POST /sync/trigger`, …) or **cron** routes (`/sync/cron/{slug}/summary|push`) with header `X-Sync-Cron-Secret` matching local `SYNC_CRON_SECRET`.\n\n" +
+        "**Facility sync:** Default central API origin is `https://api.dmp.sofoniasayele.com` (override with `CENTRAL_SYNC_URL`; paths are under `/api/v1/…`). Ingest has no auth. Optional `CENTRAL_SYNC_SECRET` / `SYNC_INGEST_SECRET` adds header `X-Sync-Ingest-Key` on outbound POSTs only.\n\n" +
         '**Seeding:** `POST /api/v1/admin/seed` with `X-Seed-Secret` (if `SEED_SECRET` is set) or ADMIN JWT. Body: `{ "scope": "roles" | "demo" | "all" }`.',
       contact: {
         name: "API Support",
@@ -33,7 +31,7 @@ const options: swaggerJsdoc.Options = {
       {
         name: "Sync",
         description:
-          "Facility ↔ central sync. **Central** exposes `POST /sync/ingest` (receives batches). **Local** pushes via JWT or cron; secrets come from environment variables at deploy time.",
+          "Facility ↔ central sync. `POST /sync/ingest` receives batches (no auth). Local pushes via JWT or cron; default central host is configurable.",
       },
     ],
     components: {

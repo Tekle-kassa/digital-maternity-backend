@@ -19,63 +19,19 @@ import {
 
 const router = Router();
 
-function syncCronAuth(req: Request, res: Response, next: NextFunction) {
-  if (!config.syncCronSecret) {
-    return sendError(
-      res,
-      "NOT_CONFIGURED",
-      "Entity sync cron is disabled (set SYNC_CRON_SECRET)",
-      503,
-    );
-  }
-  const key = req.headers["x-sync-cron-secret"];
-  if (typeof key !== "string" || key !== config.syncCronSecret) {
-    return sendError(
-      res,
-      "UNAUTHORIZED",
-      "Invalid or missing X-Sync-Cron-Secret header",
-      401,
-    );
-  }
-  next();
-}
-
-function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
-  if (!config.syncIngestSecret) {
-    return sendError(
-      res,
-      "NOT_CONFIGURED",
-      "Sync ingest is disabled (set SYNC_INGEST_SECRET on the central server)",
-      503,
-    );
-  }
-  const key = req.headers["x-sync-ingest-key"];
-  if (typeof key !== "string" || key !== config.syncIngestSecret) {
-    return sendError(res, "UNAUTHORIZED", "Invalid or missing ingest authorization", 401);
-  }
-  next();
-}
-
 /**
  * @swagger
  * /api/v1/sync/ingest:
  *   post:
  *     summary: Receive sync batches from local (central server)
  *     description: |
- *       **This is the only endpoint that accepts uploaded batches on the central (cloud) deployment.** Enable by setting environment variable SYNC_INGEST_SECRET on the central server (value is never stored in this repo).
+ *       Receives batches at `POST /api/v1/sync/ingest` on your API host (default central origin `https://api.dmp.sofoniasayele.com`). No auth required.
  *
- *       Facility servers POST to POST /api/v1/sync/ingest on the central BASE URL (their local CENTRAL_SYNC_URL plus this path). Header X-Sync-Ingest-Key must match central SYNC_INGEST_SECRET and local CENTRAL_SYNC_SECRET.
+ *       Override with env `CENTRAL_SYNC_URL` on clients (origin only; path `/api/v1/sync/ingest` is appended).
  *
  *       Idempotency: duplicate item ids per facility are skipped (duplicates counted in response).
  *     tags: [Sync]
  *     security: []
- *     parameters:
- *       - in: header
- *         name: X-Sync-Ingest-Key
- *         required: true
- *         schema:
- *           type: string
- *         description: Must match server env SYNC_INGEST_SECRET (set only in deployment).
  *     requestBody:
  *       required: true
  *       content:
@@ -92,28 +48,14 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *               properties:
  *                 data:
  *                   $ref: '#/components/schemas/SyncIngestSuccessData'
- *       401:
- *         description: Invalid or missing X-Sync-Ingest-Key header
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/DmpError'
- *       503:
- *         description: Ingest disabled — SYNC_INGEST_SECRET not set on this server
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/DmpError'
  */
 /**
  * @swagger
  * /api/v1/sync/cron/{slug}/summary:
  *   get:
- *     summary: Row-level sync counts for one entity table (local + cron secret)
+ *     summary: Row-level sync counts for one entity table
  *     description: |
- *       **Local facility server** (or a scheduler), not the central ingest URL. Requires SYNC_CRON_SECRET in the server environment.
- *
- *       Path slug is one of the enum values (e.g. patients maps to Prisma model Patient).
+ *       Local facility server or scheduler. Path slug is one of the enum values (e.g. patients maps to Prisma model Patient). No auth required.
  *     tags: [Sync]
  *     security: []
  *     parameters:
@@ -122,12 +64,6 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *         required: true
  *         schema:
  *           $ref: '#/components/schemas/SyncCronSlug'
- *       - in: header
- *         name: X-Sync-Cron-Secret
- *         required: true
- *         schema:
- *           type: string
- *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
  *     responses:
  *       200:
  *         description: Success — see SyncCronSummaryData schema
@@ -138,15 +74,11 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *               properties:
  *                 data:
  *                   $ref: '#/components/schemas/SyncCronSummaryData'
- *       401:
- *         description: Invalid X-Sync-Cron-Secret header
- *       503:
- *         description: Cron sync disabled — SYNC_CRON_SECRET not set
  * /api/v1/sync/cron/{slug}/push:
  *   post:
- *     summary: Push pending rows for one table to central ingest (local + cron secret)
+ *     summary: Push pending rows for one table to central ingest
  *     description: |
- *       Sends a batch to the central POST /api/v1/sync/ingest URL using local CENTRAL_SYNC_URL, CENTRAL_SYNC_SECRET, FACILITY_ID.
+ *       Sends a batch to central POST /api/v1/sync/ingest using CENTRAL_SYNC_URL (default cloud API), FACILITY_ID, optional CENTRAL_SYNC_SECRET for outbound header.
  *     tags: [Sync]
  *     security: []
  *     parameters:
@@ -155,12 +87,6 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *         required: true
  *         schema:
  *           $ref: '#/components/schemas/SyncCronSlug'
- *       - in: header
- *         name: X-Sync-Cron-Secret
- *         required: true
- *         schema:
- *           type: string
- *         description: Must match server env SYNC_CRON_SECRET (set only in deployment).
  *     requestBody:
  *       content:
  *         application/json:
@@ -184,10 +110,6 @@ function syncIngestAuth(req: Request, res: Response, next: NextFunction) {
  *                   $ref: '#/components/schemas/SyncCronPushSuccessData'
  *       400:
  *         description: Central not configured or ingest failed
- *       401:
- *         description: Invalid X-Sync-Cron-Secret header
- *       503:
- *         description: Cron sync disabled
  */
 for (const entityType of ENTITY_TYPES_FOR_CRON) {
   const slug = CRON_SLUG_BY_ENTITY[entityType as CronEntityType];
@@ -195,7 +117,6 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
 
   router.get(
     `${base}/summary`,
-    syncCronAuth,
     async (_req: Request, res: Response, next: NextFunction) => {
       try {
         const counts = await getEntitySyncCronSummaryFor(
@@ -210,7 +131,6 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
 
   router.post(
     `${base}/push`,
-    syncCronAuth,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const body = z
@@ -235,7 +155,6 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
 
 router.post(
   "/ingest",
-  syncIngestAuth,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const body = z
@@ -351,7 +270,7 @@ router.get(
  *   post:
  *     summary: Push pending `SyncQueueItem` rows to central ingest (JWT; local server)
  *     description: |
- *       Requires on **local**: `CENTRAL_SYNC_URL`, `FACILITY_ID`, `CENTRAL_SYNC_SECRET` (same value as central `SYNC_INGEST_SECRET`).
+ *       Requires `FACILITY_ID` on the local server. Uses `CENTRAL_SYNC_URL` (defaults to cloud API). Optional `CENTRAL_SYNC_SECRET` adds outbound ingest header.
  *       Sends up to `limit` pending rows to **`POST /api/v1/sync/ingest`** on the central host.
  *     tags: [Sync]
  *     security:
@@ -382,11 +301,11 @@ router.post(
         100,
         Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50),
       );
-      if (!config.centralSyncUrl) {
+      if (!config.facilityId) {
         return sendError(
           res,
           "NOT_CONFIGURED",
-          "Local→central sync is not configured (set CENTRAL_SYNC_URL, FACILITY_ID, CENTRAL_SYNC_SECRET)",
+          "Local→central sync requires FACILITY_ID (optional: CENTRAL_SYNC_URL to override default cloud API)",
           400,
         );
       }

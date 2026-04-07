@@ -12,19 +12,20 @@ export async function postCentralIngest(body: IngestBatchBody): Promise<{
   errorMessage?: string;
 }> {
   const baseUrl = config.centralSyncUrl;
-  const secret = config.centralSyncSecret;
-  if (!baseUrl || !secret) {
-    return { ok: false, status: 0, errorMessage: "CENTRAL_SYNC_URL or CENTRAL_SYNC_SECRET not set" };
+  if (!baseUrl) {
+    return { ok: false, status: 0, errorMessage: "CENTRAL_SYNC_URL is not set" };
   }
+  const secret = config.centralSyncSecret;
   const url = `${baseUrl}/api/v1/sync/ingest`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) {
+    headers["X-Sync-Ingest-Key"] = secret;
+  }
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Sync-Ingest-Key": secret,
-      },
+      headers,
       body: JSON.stringify(body),
     });
   } catch (e) {
@@ -72,14 +73,10 @@ export async function enqueueSyncItem(input: {
 
 export async function pushPendingToCentral(userId: string, limit = 50) {
   const baseUrl = config.centralSyncUrl;
-  const secret = config.centralSyncSecret;
   const facilityId = config.facilityId;
 
   if (!baseUrl) {
     throw new Error("CENTRAL_SYNC_URL is not set (local server cannot push)");
-  }
-  if (!secret) {
-    throw new Error("CENTRAL_SYNC_SECRET (or SYNC_INGEST_SECRET) is not set");
   }
   if (!facilityId) {
     throw new Error("FACILITY_ID is not set");
@@ -121,7 +118,7 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
     await db.syncQueueItem.updateMany({
       where: { id: { in: ids } },
       data: {
-        status: "failed",
+        status: "pending",
         errorMessage: e instanceof Error ? e.message : "Network error",
       },
     });
@@ -141,7 +138,7 @@ export async function pushPendingToCentral(userId: string, limit = 50) {
     await db.syncQueueItem.updateMany({
       where: { id: { in: ids } },
       data: {
-        status: "failed",
+        status: "pending",
         errorMessage: ingestResult.errorMessage || "Central ingest failed",
       },
     });
