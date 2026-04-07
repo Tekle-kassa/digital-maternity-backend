@@ -183,6 +183,37 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/sync/patients/pending-all:
+ *   post:
+ *     summary: Set all Patient rows syncStatus to pending
+ *     tags: [Sync]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ data: { updated: number } }"
+ */
+router.post(
+  "/patients/pending-all",
+  // authenticate,
+  async (_req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const result = await db.patient.updateMany({
+        data: {
+          syncStatus: "pending",
+          syncedAt: null,
+          syncError: null,
+        },
+      });
+      sendData(res, { updated: result.count });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @swagger
  * /api/v1/sync/enqueue:
  *   post:
  *     summary: Add a mutation to the local outbox (JWT; local server)

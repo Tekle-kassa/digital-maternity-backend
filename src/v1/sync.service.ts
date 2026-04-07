@@ -1,5 +1,6 @@
 import db from "./db";
 import config from "../config";
+import { isS3UploadConfigured, uploadUltrasoundMedia } from "../common/s3Upload";
 
 export type SyncQueueActionType = "create" | "update" | "delete";
 
@@ -193,6 +194,38 @@ export type IngestBatchBody = {
   }>;
 };
 
+/**
+ * For Ultrasound mutations, best-effort mirror media into this deployment's S3 and
+ * rewrite payload.imageUrl to the mirrored URL. If anything fails, keep original payload.
+ */
+async function maybeMirrorUltrasoundPayload(
+  entityType: string,
+  payload: unknown
+): Promise<unknown> {
+  if (entityType !== "Ultrasound") return payload;
+  if (!payload || typeof payload !== "object") return payload;
+  const obj = payload as Record<string, unknown>;
+  const imageUrl = obj.imageUrl;
+  if (typeof imageUrl !== "string" || imageUrl.trim().length === 0) return payload;
+  if (!isS3UploadConfigured()) return payload;
+
+  try {
+    const resp = await fetch(imageUrl);
+    if (!resp.ok) return payload;
+    const mime = (resp.headers.get("content-type") || "").toLowerCase();
+    if (!mime.startsWith("image/") && !mime.startsWith("video/")) return payload;
+    const arr = await resp.arrayBuffer();
+    const mirroredUrl = await uploadUltrasoundMedia(Buffer.from(arr), mime);
+    return {
+      ...obj,
+      imageUrl: mirroredUrl,
+      originalImageUrl: imageUrl,
+    };
+  } catch {
+    return payload;
+  }
+}
+
 export async function ingestBatchFromLocal(body: IngestBatchBody) {
   let accepted = 0;
   let duplicates = 0;
@@ -208,6 +241,10 @@ export async function ingestBatchFromLocal(body: IngestBatchBody) {
       duplicates += 1;
       continue;
     }
+    const payload = await maybeMirrorUltrasoundPayload(
+      item.entityType,
+      item.payload
+    );
     await db.ingestedSyncMutation.create({
       data: {
         facilityId: body.facilityId,
@@ -215,7 +252,7 @@ export async function ingestBatchFromLocal(body: IngestBatchBody) {
         entityType: item.entityType,
         entityId: item.entityId,
         action: item.action,
-        payload: item.payload === undefined ? undefined : (item.payload as object),
+        payload: payload === undefined ? undefined : (payload as object),
       },
     });
     accepted += 1;
