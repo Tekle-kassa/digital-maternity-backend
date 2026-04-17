@@ -12,6 +12,7 @@ const options: swaggerJsdoc.Options = {
         "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
         "**Legacy aliases:** `/patient` (includes `POST /register-client` + DMP patient routes), `/visit`, `/ultrasound`, `/analytics` (merged legacy + DMP analytics).\n\n" +
         "**Facility sync:** Default central API origin is `https://api.dmp.sofoniasayele.com` (override with `CENTRAL_SYNC_URL`; paths are under `/api/v1/…`). Ingest has no auth. Optional `CENTRAL_SYNC_SECRET` / `SYNC_INGEST_SECRET` adds header `X-Sync-Ingest-Key` on outbound POSTs only.\n\n" +
+        "**Mongo mirror sync:** Manual `/sync/*/push` and `/sync/*/pull` endpoints require cloud mode (`IS_CLOUD`) plus `MONGODB_URI`.\n\n" +
         '**Seeding:** `POST /api/v1/admin/seed` with `X-Seed-Secret` (if `SEED_SECRET` is set) or ADMIN JWT. Body: `{ "scope": "roles" | "demo" | "all" }`.',
       contact: {
         name: "API Support",

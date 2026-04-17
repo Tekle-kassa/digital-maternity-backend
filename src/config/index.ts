@@ -32,4 +32,8 @@ export default {
   facilityClinicId: process.env.FACILITY_CLINIC_ID || "",
   /** Optional FK for `SyncLog` rows created by entity-row cron (defaults to oldest user). */
   syncCronActingUserId: process.env.SYNC_CRON_ACTING_USER_ID || "",
+  /** Cloud mode gate for Mongo sync APIs/connections. */
+  isCloud: Boolean(process.env.IS_CLOUD || process.env.isCloud),
+  /** Optional MongoDB connection string for Prisma -> Mongo sync mirror APIs. */
+  mongoUri: process.env.MONGODB_URI || process.env.MONGO_URI || "",
 };
