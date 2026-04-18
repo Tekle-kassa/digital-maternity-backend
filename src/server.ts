@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import morgan from "morgan";
 import dotenv from "dotenv";
 import swaggerUi from "swagger-ui-express";
 import authRoutes from "./auth/auth.routes";
@@ -25,6 +26,9 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(
+  morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"),
+);
 app.use(express.json());
 
 app.get("/", (req, res) => {
