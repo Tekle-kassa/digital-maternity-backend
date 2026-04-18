@@ -40,6 +40,37 @@ async function ensureMongo(res: Response) {
 }
 
 /**
+ * Base URL for internal calls to Mongo `/pull` handlers. Localhost uses the
+ * incoming request origin; otherwise `CENTRAL_SYNC_URL` (default
+ * https://api.dmp.sofoniasayele.com). Override with `SYNC_INTERNAL_PULL_BASE_URL`.
+ */
+function getInternalSyncPullBaseUrl(req: Request): string | null {
+  const override = process.env.IS_LOCAL
+    ? "https://api.dmp.sofoniasayele.com"
+    : "";
+  if (override) return override;
+
+  const hostHeader = req.get("host") ?? "";
+  const hostname = hostHeader.split(":")[0]?.toLowerCase() ?? "";
+  const isLocal =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    process.env.SYNC_USE_LOCAL_PULL === "1" ||
+    process.env.SYNC_USE_LOCAL_PULL === "true";
+
+  if (isLocal) {
+    if (!hostHeader) return null;
+    const protoHeader = req.headers["x-forwarded-proto"];
+    const proto = Array.isArray(protoHeader)
+      ? protoHeader[0]
+      : protoHeader || req.protocol || "http";
+    return `${proto}://${hostHeader}`;
+  }
+
+  return config.centralSyncUrl;
+}
+
+/**
  * @swagger
  * /api/v1/sync/ingest:
  *   post:
@@ -175,9 +206,9 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
 
 /**
  * @swagger
- * /api/v1/sync/pattients/push:
+ * /api/v1/sync/pattients/summary:
  *   post:
- *     summary: Push unsynced Patient rows from Prisma to patient pull API
+ *     summary: Summarize unsynced Patient rows from Prisma and POST to patient pull API
  *     tags: [Sync]
  *     security:
  *       - bearerAuth: []
@@ -204,64 +235,64 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
  *     responses:
  *       200:
  *         description: "{ data: { stored } }"
- * /api/v1/sync/visits/push:
- *   post: { summary: Push unsynced Visit rows to visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/visits/summary:
+ *   post: { summary: Summarize unsynced Visit rows and POST to visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/visits/pull:
  *   post: { summary: Store Visit rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/ultrasounds/push:
- *   post: { summary: Push unsynced Ultrasound rows to ultrasound pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/ultrasounds/summary:
+ *   post: { summary: Summarize unsynced Ultrasound rows and POST to ultrasound pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/ultrasounds/pull:
  *   post: { summary: Store Ultrasound rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/gbv-reports/push:
- *   post: { summary: Push unsynced GBVReport rows to gbv-report pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-reports/summary:
+ *   post: { summary: Summarize unsynced GBVReport rows and POST to gbv-report pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/gbv-reports/pull:
  *   post: { summary: Store GBVReport rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/gbv-screenings/push:
- *   post: { summary: Push unsynced GBVScreening rows to gbv-screening pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-screenings/summary:
+ *   post: { summary: Summarize unsynced GBVScreening rows and POST to gbv-screening pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/gbv-screenings/pull:
  *   post: { summary: Store GBVScreening rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/srh-registrations/push:
- *   post: { summary: Push unsynced SRHRegistration rows to srh-registration pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/srh-registrations/summary:
+ *   post: { summary: Summarize unsynced SRHRegistration rows and POST to srh-registration pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/srh-registrations/pull:
  *   post: { summary: Store SRHRegistration rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/anc-records/push:
- *   post: { summary: Push unsynced ANCRecord rows to anc-record pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/anc-records/summary:
+ *   post: { summary: Summarize unsynced ANCRecord rows and POST to anc-record pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/anc-records/pull:
  *   post: { summary: Store ANCRecord rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/deliveries/push:
- *   post: { summary: Push unsynced Delivery rows to delivery pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/deliveries/summary:
+ *   post: { summary: Summarize unsynced Delivery rows and POST to delivery pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/deliveries/pull:
  *   post: { summary: Store Delivery rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/pnc-visits/push:
- *   post: { summary: Push unsynced PNCVisit rows to pnc-visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pnc-visits/summary:
+ *   post: { summary: Summarize unsynced PNCVisit rows and POST to pnc-visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/pnc-visits/pull:
  *   post: { summary: Store PNCVisit rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/pregnancies/push:
- *   post: { summary: Push unsynced Pregnancy rows to pregnancy pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pregnancies/summary:
+ *   post: { summary: Summarize unsynced Pregnancy rows and POST to pregnancy pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/pregnancies/pull:
  *   post: { summary: Store Pregnancy rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/referrals/push:
- *   post: { summary: Push unsynced Referral rows to referral pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/referrals/summary:
+ *   post: { summary: Summarize unsynced Referral rows and POST to referral pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/referrals/pull:
  *   post: { summary: Store Referral rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/messages/push:
- *   post: { summary: Push unsynced Message rows to message pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/messages/summary:
+ *   post: { summary: Summarize unsynced Message rows and POST to message pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/messages/pull:
  *   post: { summary: Store Message rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/conversations/push:
- *   post: { summary: Push unsynced Conversation rows to conversation pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/conversations/summary:
+ *   post: { summary: Summarize unsynced Conversation rows and POST to conversation pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/conversations/pull:
  *   post: { summary: Store Conversation rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/users/push:
- *   post: { summary: Push unsynced User rows to user pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/users/summary:
+ *   post: { summary: Summarize unsynced User rows and POST to user pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/users/pull:
  *   post: { summary: Store User rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/roles/push:
- *   post: { summary: Push Role rows to role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/roles/summary:
+ *   post: { summary: Summarize Role rows and POST to role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/roles/pull:
  *   post: { summary: Store Role rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
- * /api/v1/sync/user-roles/push:
- *   post: { summary: Push UserRole rows to user-role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/user-roles/summary:
+ *   post: { summary: Summarize UserRole rows and POST to user-role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
  * /api/v1/sync/user-roles/pull:
  *   post: { summary: Store UserRole rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
  */
@@ -298,23 +329,18 @@ router.post(
 );
 
 router.post(
-  "/pattients/push",
+  "/pattients/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const patients = await db.patient.findMany({
         // where: {
         //   OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }],
         // },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullUrl = `${proto}://${host}/api/v1/sync/pattients/pull`;
+      const pullUrl = `${baseUrl}/api/v1/sync/pattients/pull`;
       const authHeader = req.headers.authorization;
       const pullRes = await fetch(pullUrl, {
         method: "POST",
@@ -386,39 +412,31 @@ router.post(
 );
 
 router.post(
-  "/visits/push",
+  "/visits/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.visit.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/visits/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/visits/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -468,10 +486,9 @@ router.post(
 );
 
 router.post(
-  "/ultrasounds/push",
+  "/ultrasounds/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = (await db.ultrasound.findMany({
         // where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       })) as Array<Record<string, unknown>>;
@@ -506,28 +523,21 @@ router.post(
         }
         transformedRows.push(copy);
       }
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/ultrasounds/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: transformedRows,
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/ultrasounds/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: transformedRows,
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -577,39 +587,31 @@ router.post(
 );
 
 router.post(
-  "/gbv-reports/push",
+  "/gbv-reports/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await (db as any).gBVReport.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/gbv-reports/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/gbv-reports/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -659,22 +661,17 @@ router.post(
 );
 
 router.post(
-  "/gbv-screenings/push",
+  "/gbv-screenings/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await (db as any).gBVScreening.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
       const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/gbv-screenings/pull`,
+        `${baseUrl}/api/v1/sync/gbv-screenings/pull`,
         {
           method: "POST",
           headers: {
@@ -741,22 +738,17 @@ router.post(
 );
 
 router.post(
-  "/srh-registrations/push",
+  "/srh-registrations/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await (db as any).sRHRegistration.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
       const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/srh-registrations/pull`,
+        `${baseUrl}/api/v1/sync/srh-registrations/pull`,
         {
           method: "POST",
           headers: {
@@ -823,39 +815,31 @@ router.post(
 );
 
 router.post(
-  "/anc-records/push",
+  "/anc-records/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await (db as any).aNCRecord.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/anc-records/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/anc-records/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -904,39 +888,31 @@ router.post(
   },
 );
 router.post(
-  "/deliveries/push",
+  "/deliveries/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.delivery.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/deliveries/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/deliveries/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -985,39 +961,31 @@ router.post(
   },
 );
 router.post(
-  "/pnc-visits/push",
+  "/pnc-visits/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await (db as any).pNCVisit.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/pnc-visits/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/pnc-visits/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -1066,39 +1034,31 @@ router.post(
   },
 );
 router.post(
-  "/pregnancies/push",
+  "/pregnancies/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.pregnancy.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/pregnancies/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/pregnancies/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -1147,39 +1107,31 @@ router.post(
   },
 );
 router.post(
-  "/referrals/push",
+  "/referrals/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.referral.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/referrals/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/referrals/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -1228,39 +1180,31 @@ router.post(
   },
 );
 router.post(
-  "/messages/push",
+  "/messages/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.message.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/messages/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/messages/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -1309,39 +1253,31 @@ router.post(
   },
 );
 router.post(
-  "/conversations/push",
+  "/conversations/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.conversation.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/conversations/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/conversations/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };
@@ -1390,21 +1326,16 @@ router.post(
   },
 );
 router.post(
-  "/users/push",
+  "/users/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.user.findMany({
         where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
       });
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(`${proto}://${host}/api/v1/sync/users/pull`, {
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/users/pull`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1468,19 +1399,14 @@ router.post(
   },
 );
 router.post(
-  "/roles/push",
+  "/roles/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.role.findMany();
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(`${proto}://${host}/api/v1/sync/roles/pull`, {
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/roles/pull`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1544,37 +1470,29 @@ router.post(
   },
 );
 router.post(
-  "/user-roles/push",
+  "/user-roles/summary",
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      if (!(await ensureMongo(res))) return;
       const rows = await db.userRole.findMany();
-      const protoHeader = req.headers["x-forwarded-proto"];
-      const proto = Array.isArray(protoHeader)
-        ? protoHeader[0]
-        : protoHeader || req.protocol || "http";
-      const host = req.get("host");
-      if (!host)
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
         return sendError(res, "BAD_REQUEST", "Missing host header", 400);
-      const pullRes = await fetch(
-        `${proto}://${host}/api/v1/sync/user-roles/pull`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(typeof req.headers.authorization === "string"
-              ? { Authorization: req.headers.authorization }
-              : {}),
-          },
-          body: JSON.stringify({
-            items: JSON.parse(
-              JSON.stringify(rows, (_k, value) =>
-                typeof value === "bigint" ? value.toString() : value,
-              ),
-            ),
-          }),
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/user-roles/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
         },
-      );
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
       const pullJson = (await pullRes.json().catch(() => ({}))) as {
         data?: Record<string, unknown>;
         error?: { message?: string };

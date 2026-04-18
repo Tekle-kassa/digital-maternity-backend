@@ -9,10 +9,10 @@ const options: swaggerJsdoc.Options = {
       description:
         "UNFPA Digital Maternity Package (DMP) — REST API per `API-REFERENCE.md` + legacy modules (ANC register-client, delivery, PNC, etc.).\n\n" +
         "**Base path:** `/api/v1`\n\n" +
-        "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
+        "**DMP resources:** `/users`, `/clinics`, `/patients`, `/visits`, `/ultrasounds`, `/gbv-reports`, `/teleconsults`, `/alerts`, `/appointments`, `/analytics`, `/sync`, `/mongo`, `/activity`, `/settings`, `/files`, `/risk`\n\n" +
         "**Legacy aliases:** `/patient` (includes `POST /register-client` + DMP patient routes), `/visit`, `/ultrasound`, `/analytics` (merged legacy + DMP analytics).\n\n" +
         "**Facility sync:** Default central API origin is `https://api.dmp.sofoniasayele.com` (override with `CENTRAL_SYNC_URL`; paths are under `/api/v1/…`). Ingest has no auth. Optional `CENTRAL_SYNC_SECRET` / `SYNC_INGEST_SECRET` adds header `X-Sync-Ingest-Key` on outbound POSTs only.\n\n" +
-        "**Mongo mirror sync:** Manual `/sync/*/push` and `/sync/*/pull` endpoints require cloud mode (`IS_CLOUD`) plus `MONGODB_URI`.\n\n" +
+        "**Mongo mirror:** `GET/POST /mongo/…` — JWT; requires `MONGODB_URI` / `IS_CLOUD` for data access. Manual `/sync/*/summary` and `/sync/*/pull` under `/api/v1/sync` require the same for pull.\n\n" +
         '**Seeding:** `POST /api/v1/admin/seed` with `X-Seed-Secret` (if `SEED_SECRET` is set) or ADMIN JWT. Body: `{ "scope": "roles" | "demo" | "all" }`.',
       contact: {
         name: "API Support",
@@ -34,6 +34,11 @@ const options: swaggerJsdoc.Options = {
         description:
           "Facility ↔ central sync. `POST /sync/ingest` receives batches (no auth). Local pushes via JWT or cron; default central host is configurable.",
       },
+      {
+        name: "Mongo",
+        description:
+          "MongoDB mirror under `/api/v1/mongo`. Each entity has its own paths (e.g. `GET /mongo/Patient`, `GET /mongo/Patient/{id}`) — no generic `/:entityType` route. Filters on list: any query key except `page`, `limit`, `sort`, `order` is equality-matched; use `field_gte` / `field_lte` with ISO dates for ranges. Lists return `data` + `meta`.",
+      },
     ],
     components: {
       securitySchemes: {
@@ -42,6 +47,36 @@ const options: swaggerJsdoc.Options = {
           scheme: "bearer",
           bearerFormat: "JWT",
           description: "Enter JWT token",
+        },
+      },
+      parameters: {
+        MongoListPage: {
+          name: "page",
+          in: "query",
+          description: "1-based page index",
+          schema: { type: "integer", minimum: 1, default: 1 },
+        },
+        MongoListLimit: {
+          name: "limit",
+          in: "query",
+          description: "Page size",
+          schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+        },
+        MongoListSort: {
+          name: "sort",
+          in: "query",
+          description: "Mongo field to sort by",
+          schema: { type: "string", default: "updatedAt" },
+        },
+        MongoListOrder: {
+          name: "order",
+          in: "query",
+          description: "Sort direction",
+          schema: {
+            type: "string",
+            enum: ["asc", "desc"],
+            default: "desc",
+          },
         },
       },
       schemas: {
@@ -132,6 +167,66 @@ const options: swaggerJsdoc.Options = {
                 details: { type: "object", additionalProperties: true },
               },
             },
+          },
+        },
+        PrismaSyncEntityName: {
+          type: "string",
+          description: "Prisma model name for mirrored Mongo collection",
+          enum: [
+            "Patient",
+            "Visit",
+            "Ultrasound",
+            "GBVReport",
+            "GBVScreening",
+            "SRHRegistration",
+            "ANCRecord",
+            "Delivery",
+            "PNCVisit",
+            "Pregnancy",
+            "Referral",
+            "Message",
+            "Conversation",
+            "User",
+            "Role",
+            "UserRole",
+          ],
+        },
+        MongoEntitiesResponse: {
+          type: "object",
+          properties: {
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/PrismaSyncEntityName" },
+            },
+          },
+        },
+        MongoSyncEntityResult: {
+          type: "object",
+          properties: {
+            entityType: { $ref: "#/components/schemas/PrismaSyncEntityName" },
+            totalFromPrisma: { type: "integer" },
+            upserted: { type: "integer" },
+            deleted: { type: "integer" },
+          },
+        },
+        MongoSyncAllResponse: {
+          type: "object",
+          properties: {
+            syncedAt: { type: "string", format: "date-time" },
+            results: {
+              type: "array",
+              items: { $ref: "#/components/schemas/MongoSyncEntityResult" },
+            },
+          },
+        },
+        MongoSyncSingleResponse: {
+          type: "object",
+          properties: {
+            syncedAt: { type: "string", format: "date-time" },
+            entityType: { $ref: "#/components/schemas/PrismaSyncEntityName" },
+            totalFromPrisma: { type: "integer" },
+            upserted: { type: "integer" },
+            deleted: { type: "integer" },
           },
         },
         SyncIngestItem: {
