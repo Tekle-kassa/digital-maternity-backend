@@ -1,4 +1,5 @@
 import prisma from "../config/prisma";
+import { UltrasoundReviewStatus } from "../generated/prisma/client";
 
 export interface CreateUltrasoundDTO {
   patientId: string;
@@ -42,6 +43,24 @@ export class UltrasoundRepository {
   static async delete(id: string) {
     return prisma.ultrasound.delete({
       where: { id },
+    });
+  }
+
+  static async setReviewApproved(id: string, reviewerId: string) {
+    return prisma.ultrasound.update({
+      where: { id },
+      data: {
+        reviewStatus: UltrasoundReviewStatus.APPROVED,
+        reviewedById: reviewerId,
+        reviewedAt: new Date(),
+      },
+    });
+  }
+
+  static async setAnnotations(id: string, annotations: string) {
+    return prisma.ultrasound.update({
+      where: { id },
+      data: { annotations },
     });
   }
 }

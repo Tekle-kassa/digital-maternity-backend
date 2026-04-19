@@ -175,6 +175,7 @@ model User {
   uploadedFiles       UploadedFile[]
   notificationPreference NotificationPreference?
   userSessions        UserSession[]
+  ultrasoundReviews  Ultrasound[]    @relation("UltrasoundReviewedBy")
 }
 
 model Role {
@@ -365,6 +366,13 @@ enum VisitCaseCategory {
   GBV_SCREENING
 }
 
+/** Expert / clinician review workflow for uploaded ultrasound media. */
+enum UltrasoundReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model Ultrasound {
   id             String   @id @default(uuid())
   patientId      String
@@ -388,6 +396,10 @@ model Ultrasound {
 
   // scanDate      DateTime
   annotations    String?
+  reviewStatus   UltrasoundReviewStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?                  @relation("UltrasoundReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
   takenById      String
   takenBy        User     @relation(fields: [takenById], references: [id])
 }

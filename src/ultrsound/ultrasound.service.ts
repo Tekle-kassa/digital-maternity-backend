@@ -2,6 +2,7 @@ import prisma from "../config/prisma";
 import { PatientRepository } from "../patient/patient.repository";
 import { AppError } from "../utils/AppError";
 import { VisitRepository } from "../visit/visit.repository";
+import { UltrasoundReviewStatus } from "../generated/prisma/client";
 import {
   CreateUltrasoundDTO,
   UltrasoundRepository,
@@ -49,5 +50,24 @@ export class UltrasoundService {
     if (!exists) throw new AppError("Ultrasound not found", 404);
 
     return UltrasoundRepository.delete(id);
+  }
+
+  /** Transitions review from pending to approved (idempotent if already approved). */
+  static async approveUltrasound(id: string, reviewerUserId: string) {
+    const exists = await UltrasoundRepository.findById(id);
+    if (!exists) throw new AppError("Ultrasound not found", 404);
+    if (exists.reviewStatus === UltrasoundReviewStatus.REJECTED) {
+      throw new AppError("Cannot approve a rejected ultrasound", 409);
+    }
+    if (exists.reviewStatus === UltrasoundReviewStatus.APPROVED) {
+      return exists;
+    }
+    return UltrasoundRepository.setReviewApproved(id, reviewerUserId);
+  }
+
+  static async setExpertAnnotation(id: string, annotation: string) {
+    const exists = await UltrasoundRepository.findById(id);
+    if (!exists) throw new AppError("Ultrasound not found", 404);
+    return UltrasoundRepository.setAnnotations(id, annotation);
   }
 }

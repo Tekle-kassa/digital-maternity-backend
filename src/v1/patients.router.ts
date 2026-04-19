@@ -156,7 +156,7 @@ router.get(
     try {
       const list = await db.ultrasound.findMany({
         where: { patientId: req.params.id },
-        include: { patient: true, takenBy: true },
+        include: { patient: true, takenBy: true, reviewedBy: true },
       });
       sendData(
         res,

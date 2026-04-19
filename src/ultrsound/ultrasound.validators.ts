@@ -43,6 +43,11 @@ function parseOptInt(
   return n;
 }
 
+/** JSON body for expert annotation on an ultrasound (stored in `annotations`). */
+export const ultrasoundExpertAnnotationBodySchema = z.object({
+  annotation: z.string().min(1).max(50_000),
+});
+
 export function parseUltrasoundMultipartFields(
   body: Record<string, unknown>
 ): ParsedUltrasoundMultipartFields {

@@ -9,10 +9,20 @@ import {
   isS3UploadConfigured,
   uploadUltrasoundMedia,
 } from "../common/s3Upload";
-import { parseUltrasoundMultipartFields } from "../ultrsound/ultrasound.validators";
+import {
+  parseUltrasoundMultipartFields,
+  ultrasoundExpertAnnotationBodySchema,
+} from "../ultrsound/ultrasound.validators";
 import { AppError } from "../utils/AppError";
 
 const router = Router();
+
+const ultrasoundDetailInclude = {
+  patient: true,
+  takenBy: true,
+  reviewedBy: true,
+  visit: { select: { id: true, visitCaseCategory: true } },
+} as const;
 
 /**
  * @swagger
@@ -55,11 +65,7 @@ router.get(
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-        include: {
-          patient: true,
-          takenBy: true,
-          visit: { select: { id: true, visitCaseCategory: true } },
-        },
+        include: ultrasoundDetailInclude,
       });
       sendData(
         res,
@@ -104,11 +110,111 @@ router.get(
     try {
       const u = await db.ultrasound.findUnique({
         where: { id: req.params.id },
-        include: {
-          patient: true,
-          takenBy: true,
-          visit: { select: { id: true, visitCaseCategory: true } },
-        },
+        include: ultrasoundDetailInclude,
+      });
+      if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
+      sendData(
+        res,
+        mapUltrasoundToApi(
+          u,
+          u.patient.fullName,
+          u.takenBy.fullName ?? u.takenBy.phone,
+          u.visit
+        )
+      );
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/v1/ultrasounds/{id}/approve:
+ *   post:
+ *     summary: Approve ultrasound review (pending → approved)
+ *     description: Intended for clinicians / experts (e.g. DOCTOR). Idempotent if already approved.
+ *     tags: [DMP]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: "{ data }"
+ */
+router.post(
+  "/:id/approve",
+  authenticate,
+  authorizeRoles("DOCTOR"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      await UltrasoundService.approveUltrasound(req.params.id, req.user!.id);
+      const u = await db.ultrasound.findUnique({
+        where: { id: req.params.id },
+        include: ultrasoundDetailInclude,
+      });
+      if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
+      sendData(
+        res,
+        mapUltrasoundToApi(
+          u,
+          u.patient.fullName,
+          u.takenBy.fullName ?? u.takenBy.phone,
+          u.visit
+        )
+      );
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/v1/ultrasounds/{id}/annotations:
+ *   post:
+ *     summary: Set expert clinical annotation for an ultrasound
+ *     description: Body `{ "annotation": "..." }` is stored in the scan annotations field.
+ *     tags: [DMP]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [annotation]
+ *             properties:
+ *               annotation: { type: string }
+ *     responses:
+ *       200:
+ *         description: "{ data }"
+ */
+router.post(
+  "/:id/annotations",
+  authenticate,
+  authorizeRoles("DOCTOR"),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const parsed = ultrasoundExpertAnnotationBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        const msg = parsed.error.issues.map((i) => i.message).join("; ");
+        return sendError(res, "VALIDATION_ERROR", msg, 400);
+      }
+      await UltrasoundService.setExpertAnnotation(req.params.id, parsed.data.annotation);
+      const u = await db.ultrasound.findUnique({
+        where: { id: req.params.id },
+        include: ultrasoundDetailInclude,
       });
       if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
       sendData(
@@ -245,11 +351,7 @@ router.post(
       });
       const u = await db.ultrasound.findUnique({
         where: { id: created.id },
-        include: {
-          patient: true,
-          takenBy: true,
-          visit: { select: { id: true, visitCaseCategory: true } },
-        },
+        include: ultrasoundDetailInclude,
       });
       if (!u) return sendError(res, "ERROR", "Create failed", 500);
       sendData(
@@ -294,11 +396,7 @@ router.patch(
       await UltrasoundService.updateUltrasound(req.params.id, req.body);
       const u = await db.ultrasound.findUnique({
         where: { id: req.params.id },
-        include: {
-          patient: true,
-          takenBy: true,
-          visit: { select: { id: true, visitCaseCategory: true } },
-        },
+        include: ultrasoundDetailInclude,
       });
       if (!u) return sendError(res, "NOT_FOUND", "Ultrasound not found", 404);
       sendData(

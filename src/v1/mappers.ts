@@ -144,12 +144,16 @@ export function mapUltrasoundToApi(
     gain?: number | null;
     depth?: number | null;
     dynamicRange?: number | null;
+    reviewStatus?: string;
+    reviewedAt?: Date | null;
+    reviewedBy?: { fullName: string | null; phone: string } | null;
   },
   patientName: string,
   capturedName: string,
   visit?: { id: string; visitCaseCategory: string } | null
 ) {
   const deviceTime = u.capturedAt ?? u.createdAt;
+  const status = (u.reviewStatus ?? "PENDING").toLowerCase();
   return {
     id: u.id,
     patientId: u.patientId,
@@ -170,7 +174,11 @@ export function mapUltrasoundToApi(
     quality: "good" as const,
     capturedBy: capturedName,
     capturedById: u.takenById,
-    reviewStatus: "pending" as const,
+    reviewStatus: status as "pending" | "approved" | "rejected",
+    reviewedAt: u.reviewedAt?.toISOString(),
+    reviewedBy: u.reviewedBy
+      ? u.reviewedBy.fullName ?? u.reviewedBy.phone
+      : undefined,
     syncStatus: "synced" as const,
     createdAt: u.createdAt.toISOString(),
   };
