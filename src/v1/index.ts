@@ -13,6 +13,7 @@ import activityRouter from "./activity.router";
 import settingsRouter from "./settings.router";
 import filesRouter from "./files.router";
 import riskRouter from "./risk.router";
+import mongoRouter from "./mongo.router";
 const v1Router = Router();
 
 v1Router.use("/users", usersRouter);
@@ -29,4 +30,5 @@ v1Router.use("/activity", activityRouter);
 v1Router.use("/settings", settingsRouter);
 v1Router.use("/files", filesRouter);
 v1Router.use("/risk", riskRouter);
+v1Router.use("/mongo", mongoRouter);
 export default v1Router;

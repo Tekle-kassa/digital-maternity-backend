@@ -1,6 +1,6 @@
 import { Router, Response, NextFunction, Request } from "express";
 import db from "./db";
-import { authenticate, AuthRequest } from "../middleware/authMiddleware";
+import { AuthRequest } from "../middleware/authMiddleware";
 import { sendData, sendError } from "./helpers";
 import { z } from "zod";
 import config from "../config";
@@ -16,8 +16,59 @@ import {
   pushPendingEntityTableToCentral,
   type CronEntityType,
 } from "./sync-cron.service";
+import { connectMongoIfConfigured, isMongoConfigured } from "../config/mongo";
+import { getMongoModelForEntity } from "../mongo/entity-models";
+import {
+  isS3UploadConfigured,
+  uploadUltrasoundMedia,
+} from "../common/s3Upload";
 
 const router = Router();
+
+async function ensureMongo(res: Response) {
+  if (!isMongoConfigured()) {
+    sendError(
+      res,
+      "MONGO_NOT_CONFIGURED",
+      "Mongo sync requires cloud mode (`IS_CLOUD`) and `MONGODB_URI` (or `MONGO_URI`)",
+      400,
+    );
+    return false;
+  }
+  await connectMongoIfConfigured();
+  return true;
+}
+
+/**
+ * Base URL for internal calls to Mongo `/pull` handlers. Localhost uses the
+ * incoming request origin; otherwise `CENTRAL_SYNC_URL` (default
+ * https://api.dmp.sofoniasayele.com). Override with `SYNC_INTERNAL_PULL_BASE_URL`.
+ */
+function getInternalSyncPullBaseUrl(req: Request): string | null {
+  const override = process.env.IS_LOCAL
+    ? "https://api.dmp.sofoniasayele.com"
+    : "";
+  if (override) return override;
+
+  const hostHeader = req.get("host") ?? "";
+  const hostname = hostHeader.split(":")[0]?.toLowerCase() ?? "";
+  const isLocal =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    process.env.SYNC_USE_LOCAL_PULL === "1" ||
+    process.env.SYNC_USE_LOCAL_PULL === "true";
+
+  if (isLocal) {
+    if (!hostHeader) return null;
+    const protoHeader = req.headers["x-forwarded-proto"];
+    const proto = Array.isArray(protoHeader)
+      ? protoHeader[0]
+      : protoHeader || req.protocol || "http";
+    return `${proto}://${hostHeader}`;
+  }
+
+  return config.centralSyncUrl;
+}
 
 /**
  * @swagger
@@ -153,6 +204,1316 @@ for (const entityType of ENTITY_TYPES_FOR_CRON) {
   );
 }
 
+/**
+ * @swagger
+ * /api/v1/sync/pattients/summary:
+ *   post:
+ *     summary: Summarize unsynced Patient rows from Prisma and POST to patient pull API
+ *     tags: [Sync]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: "{ data: { unsyncedFromPrisma, pull } }"
+ * /api/v1/sync/pattients/pull:
+ *   post:
+ *     summary: Store Patient rows into MongoDB (upsert by id)
+ *     tags: [Sync]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       200:
+ *         description: "{ data: { stored } }"
+ * /api/v1/sync/visits/summary:
+ *   post: { summary: Summarize unsynced Visit rows and POST to visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/visits/pull:
+ *   post: { summary: Store Visit rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/ultrasounds/summary:
+ *   post: { summary: Summarize unsynced Ultrasound rows and POST to ultrasound pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/ultrasounds/pull:
+ *   post: { summary: Store Ultrasound rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-reports/summary:
+ *   post: { summary: Summarize unsynced GBVReport rows and POST to gbv-report pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-reports/pull:
+ *   post: { summary: Store GBVReport rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-screenings/summary:
+ *   post: { summary: Summarize unsynced GBVScreening rows and POST to gbv-screening pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/gbv-screenings/pull:
+ *   post: { summary: Store GBVScreening rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/srh-registrations/summary:
+ *   post: { summary: Summarize unsynced SRHRegistration rows and POST to srh-registration pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/srh-registrations/pull:
+ *   post: { summary: Store SRHRegistration rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/anc-records/summary:
+ *   post: { summary: Summarize unsynced ANCRecord rows and POST to anc-record pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/anc-records/pull:
+ *   post: { summary: Store ANCRecord rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/deliveries/summary:
+ *   post: { summary: Summarize unsynced Delivery rows and POST to delivery pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/deliveries/pull:
+ *   post: { summary: Store Delivery rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pnc-visits/summary:
+ *   post: { summary: Summarize unsynced PNCVisit rows and POST to pnc-visit pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pnc-visits/pull:
+ *   post: { summary: Store PNCVisit rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pregnancies/summary:
+ *   post: { summary: Summarize unsynced Pregnancy rows and POST to pregnancy pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/pregnancies/pull:
+ *   post: { summary: Store Pregnancy rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/referrals/summary:
+ *   post: { summary: Summarize unsynced Referral rows and POST to referral pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/referrals/pull:
+ *   post: { summary: Store Referral rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/messages/summary:
+ *   post: { summary: Summarize unsynced Message rows and POST to message pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/messages/pull:
+ *   post: { summary: Store Message rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/conversations/summary:
+ *   post: { summary: Summarize unsynced Conversation rows and POST to conversation pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/conversations/pull:
+ *   post: { summary: Store Conversation rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/users/summary:
+ *   post: { summary: Summarize unsynced User rows and POST to user pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/users/pull:
+ *   post: { summary: Store User rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/roles/summary:
+ *   post: { summary: Summarize Role rows and POST to role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/roles/pull:
+ *   post: { summary: Store Role rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/user-roles/summary:
+ *   post: { summary: Summarize UserRole rows and POST to user-role pull API, tags: [Sync], security: [{ bearerAuth: [] }] }
+ * /api/v1/sync/user-roles/pull:
+ *   post: { summary: Store UserRole rows into MongoDB, tags: [Sync], security: [{ bearerAuth: [] }] }
+ */
+router.post(
+  "/pattients/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({
+          items: z.array(z.record(z.string(), z.unknown())),
+        })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Patient");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+
+      if (operations.length > 0) {
+        await model.bulkWrite(operations as any, { ordered: false });
+      }
+
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/pattients/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const patients = await db.patient.findMany({
+        // where: {
+        //   OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }],
+        // },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullUrl = `${baseUrl}/api/v1/sync/pattients/pull`;
+      const authHeader = req.headers.authorization;
+      const pullRes = await fetch(pullUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof authHeader === "string"
+            ? { Authorization: authHeader }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(patients, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok) {
+        console.log(pullRes);
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed to store patients in Mongo",
+          400,
+        );
+      }
+
+      sendData(res, {
+        unsyncedFromPrisma: patients.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      console.log(e);
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/visits/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Visit");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/visits/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.visit.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/visits/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/ultrasounds/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Ultrasound");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/ultrasounds/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = (await db.ultrasound.findMany({
+        // where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      })) as Array<Record<string, unknown>>;
+      console.log(rows);
+      const transformedRows: Array<Record<string, unknown>> = [];
+      for (const row of rows) {
+        const copy = JSON.parse(
+          JSON.stringify(row, (_k, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+          ),
+        ) as Record<string, unknown>;
+        const imageUrl = copy.imageUrl;
+        if (
+          isS3UploadConfigured() &&
+          typeof imageUrl === "string" &&
+          imageUrl.length > 0
+        ) {
+          try {
+            const mediaRes = await fetch(imageUrl);
+            if (mediaRes.ok) {
+              const mime =
+                mediaRes.headers.get("content-type") ||
+                "application/octet-stream";
+              const buff = Buffer.from(await mediaRes.arrayBuffer());
+              const uploadedUrl = await uploadUltrasoundMedia(buff, mime);
+              copy.imageUrl = uploadedUrl;
+              copy.originalImageUrl = imageUrl;
+            }
+          } catch {
+            // Keep original imageUrl when download/upload fails.
+          }
+        }
+        transformedRows.push(copy);
+      }
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/ultrasounds/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: transformedRows,
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: transformedRows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/gbv-reports/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("GBVReport");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/gbv-reports/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await (db as any).gBVReport.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/gbv-reports/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/gbv-screenings/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("GBVScreening");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/gbv-screenings/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await (db as any).gBVScreening.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(
+        `${baseUrl}/api/v1/sync/gbv-screenings/pull`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(typeof req.headers.authorization === "string"
+              ? { Authorization: req.headers.authorization }
+              : {}),
+          },
+          body: JSON.stringify({
+            items: JSON.parse(
+              JSON.stringify(rows, (_k, value) =>
+                typeof value === "bigint" ? value.toString() : value,
+              ),
+            ),
+          }),
+        },
+      );
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/srh-registrations/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("SRHRegistration");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/srh-registrations/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await (db as any).sRHRegistration.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(
+        `${baseUrl}/api/v1/sync/srh-registrations/pull`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(typeof req.headers.authorization === "string"
+              ? { Authorization: req.headers.authorization }
+              : {}),
+          },
+          body: JSON.stringify({
+            items: JSON.parse(
+              JSON.stringify(rows, (_k, value) =>
+                typeof value === "bigint" ? value.toString() : value,
+              ),
+            ),
+          }),
+        },
+      );
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/anc-records/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("ANCRecord");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/anc-records/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await (db as any).aNCRecord.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/anc-records/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/deliveries/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Delivery");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/deliveries/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.delivery.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/deliveries/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/pnc-visits/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("PNCVisit");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/pnc-visits/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await (db as any).pNCVisit.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/pnc-visits/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/pregnancies/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Pregnancy");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/pregnancies/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.pregnancy.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/pregnancies/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/referrals/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Referral");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/referrals/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.referral.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/referrals/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/messages/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Message");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/messages/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.message.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/messages/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/conversations/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Conversation");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/conversations/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.conversation.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/conversations/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/users/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("User");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/users/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.user.findMany({
+        where: { OR: [{ syncStatus: { not: "synced" } }, { syncedAt: null }] },
+      });
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/users/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/roles/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("Role");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/roles/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.role.findMany();
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/roles/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/user-roles/pull",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!(await ensureMongo(res))) return;
+      const body = z
+        .object({ items: z.array(z.record(z.string(), z.unknown())) })
+        .parse(req.body ?? {});
+      const model = getMongoModelForEntity("UserRole");
+      const operations = body.items
+        .filter((item) => typeof item.id === "string" && item.id.length > 0)
+        .map((item) => ({
+          updateOne: {
+            filter: { id: item.id as string },
+            update: { $set: item },
+            upsert: true,
+          },
+        }));
+      if (operations.length > 0)
+        await model.bulkWrite(operations as any, { ordered: false });
+      sendData(res, { stored: operations.length });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+router.post(
+  "/user-roles/summary",
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const rows = await db.userRole.findMany();
+      const baseUrl = getInternalSyncPullBaseUrl(req);
+      if (!baseUrl)
+        return sendError(res, "BAD_REQUEST", "Missing host header", 400);
+      const pullRes = await fetch(`${baseUrl}/api/v1/sync/user-roles/pull`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(typeof req.headers.authorization === "string"
+            ? { Authorization: req.headers.authorization }
+            : {}),
+        },
+        body: JSON.stringify({
+          items: JSON.parse(
+            JSON.stringify(rows, (_k, value) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ),
+        }),
+      });
+      const pullJson = (await pullRes.json().catch(() => ({}))) as {
+        data?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!pullRes.ok)
+        return sendError(
+          res,
+          "PULL_FAILED",
+          pullJson?.error?.message || "Failed",
+          400,
+        );
+      sendData(res, {
+        unsyncedFromPrisma: rows.length,
+        pull: pullJson?.data ?? {},
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
 router.post(
   "/ingest",
   async (req: Request, res: Response, next: NextFunction) => {
@@ -195,7 +1556,6 @@ router.post(
  */
 router.post(
   "/patients/pending-all",
-  // authenticate,
   async (_req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const result = await db.patient.updateMany({
@@ -234,7 +1594,6 @@ router.post(
  */
 router.post(
   "/enqueue",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const body = z
@@ -268,7 +1627,6 @@ router.post(
  */
 router.get(
   "/status",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const last = await db.syncLog.findFirst({
@@ -325,7 +1683,6 @@ router.get(
  */
 router.post(
   "/trigger",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(
@@ -363,7 +1720,6 @@ router.post(
  */
 router.get(
   "/queue",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const items = await db.syncQueueItem.findMany({
@@ -402,7 +1758,6 @@ router.get(
  */
 router.get(
   "/conflicts",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const rows = await db.syncConflict.findMany({
@@ -460,7 +1815,6 @@ router.get(
  */
 router.post(
   "/conflicts/:id/resolve",
-  authenticate,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const body = z

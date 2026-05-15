@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import morgan from "morgan";
 import dotenv from "dotenv";
 import swaggerUi from "swagger-ui-express";
 import authRoutes from "./auth/auth.routes";
@@ -20,10 +21,14 @@ import v1ReferenceRoutes from "./v1";
 import adminRoutes from "./seed/seed.routes";
 import { swaggerSpec } from "./config/swagger";
 import prisma from "./config/prisma";
+import { connectMongoIfConfigured, isMongoConfigured } from "./config/mongo";
 dotenv.config();
 
 const app = express();
 app.use(cors());
+app.use(
+  morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"),
+);
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -58,6 +63,10 @@ async function start() {
   try {
     await prisma.$connect();
     console.log("Database connected ✓");
+    if (isMongoConfigured()) {
+      await connectMongoIfConfigured();
+      console.log("MongoDB connected ✓");
+    }
   } catch (err) {
     console.error("Database connection failed:", err);
     process.exit(1);
