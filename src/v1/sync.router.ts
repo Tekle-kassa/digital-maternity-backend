@@ -45,9 +45,8 @@ async function ensureMongo(res: Response) {
  * https://api.dmp.sofoniasayele.com). Override with `SYNC_INTERNAL_PULL_BASE_URL`.
  */
 function getInternalSyncPullBaseUrl(req: Request): string | null {
-  const override = process.env.IS_LOCAL
-    ? "https://api.dmp.sofoniasayele.com"
-    : "";
+  const override = "https://api.dmp.sofoniasayele.com";
+
   if (override) return override;
 
   const hostHeader = req.get("host") ?? "";
